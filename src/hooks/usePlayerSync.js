@@ -20,37 +20,57 @@ export function PlayerSync({ socket, isPaused }) {
 
     try {
       // Procurar o objeto do controller na cena (cache para performance)
+      // Só procura uma vez e mantém em cache
       if (!controllerObjectRef.current) {
+        let found = false
+        
+        // Primeira tentativa: procurar por userData.isController (mais rápido)
         scene.traverse((obj) => {
-          // Procurar por objetos com userData.isController
+          if (found) return
           if (obj.userData?.isController) {
             controllerObjectRef.current = obj
-          }
-          // Ou procurar por RigidBody do player (ecctrl cria um)
-          else if (obj.userData?.rapierBody) {
-            const body = world.bodies.get(obj.userData.rapierBody)
-            if (body && body.isDynamic()) {
-              controllerObjectRef.current = obj
-            }
+            found = true
           }
         })
-      }
-
-      // Se ainda não encontrou, procurar por grupos com física
-      if (!controllerObjectRef.current) {
-        scene.traverse((obj) => {
-          if (obj.type === 'Group' && obj.children.length > 0) {
-            const hasRapierBody = obj.children.some(child => 
-              child.userData?.rapierBody
-            )
-            if (hasRapierBody && obj.position && Math.abs(obj.position.y) < 10) {
-              controllerObjectRef.current = obj
+        
+        // Segunda tentativa: procurar por RigidBody (mais custoso)
+        if (!found) {
+          scene.traverse((obj) => {
+            if (found) return
+            if (obj.userData?.rapierBody) {
+              const body = world.bodies.get(obj.userData.rapierBody)
+              if (body && body.isDynamic()) {
+                controllerObjectRef.current = obj
+                found = true
+              }
             }
-          }
-        })
+          })
+        }
+        
+        // Terceira tentativa: procurar por grupos (mais custoso ainda)
+        if (!found) {
+          scene.traverse((obj) => {
+            if (found) return
+            if (obj.type === 'Group' && obj.children.length > 0) {
+              const hasRapierBody = obj.children.some(child => 
+                child.userData?.rapierBody
+              )
+              if (hasRapierBody && obj.position && Math.abs(obj.position.y) < 10) {
+                controllerObjectRef.current = obj
+                found = true
+              }
+            }
+          })
+        }
       }
 
       if (!controllerObjectRef.current) return
+      
+      // Verificar se o objeto ainda existe na cena
+      if (!controllerObjectRef.current.parent && !scene.getObjectById(controllerObjectRef.current.id)) {
+        controllerObjectRef.current = null
+        return
+      }
 
       const position = {
         x: controllerObjectRef.current.position.x || 0,

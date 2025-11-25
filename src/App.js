@@ -6,6 +6,8 @@ import * as THREE from 'three'
 import Controller from 'ecctrl'
 import CharacterSelection from './components/CharacterSelection'
 import RemotePlayer from './components/RemotePlayer'
+import JoinAnimation from './components/JoinAnimation'
+import JoinNotification from './components/JoinNotification'
 import { useSocket } from './hooks/useSocket'
 import { usePlayers } from './hooks/usePlayers'
 import { PlayerSync } from './hooks/usePlayerSync'
@@ -245,6 +247,10 @@ export default function App() {
   const { socket, isConnected } = useSocket()
   const { players, addPlayer, updatePlayer, removePlayer, clearPlayers } = usePlayers()
   
+  // Estado para animações e notificações de entrada
+  const [joinAnimations, setJoinAnimations] = useState([]) // [{ id, position, timestamp }]
+  const [notifications, setNotifications] = useState([]) // [{ id, nickname, timestamp }]
+  
   const keyboardMap = [
     { name: 'forward', keys: ['ArrowUp', 'KeyW'] },
     { name: 'backward', keys: ['ArrowDown', 'KeyS'] },
@@ -269,25 +275,54 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
   
-  // Configurar eventos Socket.IO quando conectar
+  // Configurar eventos Socket.IO quando socket estiver disponível
   useEffect(() => {
-    if (!socket || !hasJoined) return
+    if (!socket) return
+
+    console.log('📡 Configurando eventos Socket.IO...')
 
     // Evento: Receber lista de players ao conectar
     socket.on('currentPlayers', (playersList) => {
-      console.log('Players atuais:', playersList)
+      console.log('👥 Players atuais recebidos:', playersList)
+      console.log('📊 Total de players:', Object.keys(playersList).length)
+      console.log('🆔 Meu socket.id:', socket.id)
+      
       Object.values(playersList).forEach(player => {
+        console.log(`  - Player: ${player.nickname} (${player.id})`)
         if (player.id !== socket.id) { // Não adicionar a si mesmo
+          console.log(`  ✅ Adicionando player remoto: ${player.nickname}`)
           addPlayer(player)
+        } else {
+          console.log(`  ⏭️  Pulando a si mesmo`)
         }
       })
     })
 
     // Evento: Novo player entrou
     socket.on('newPlayer', (player) => {
-      console.log('Novo player entrou:', player)
+      console.log('🆕 Novo player entrou:', player)
+      console.log('🆔 Meu socket.id:', socket.id, '| Player.id:', player.id)
       if (player.id !== socket.id) {
+        console.log(`  ✅ Adicionando novo player: ${player.nickname}`)
         addPlayer(player)
+        
+        // Adicionar animação de entrada na posição do player
+        const position = player.position || { x: 0, y: 0, z: 0 }
+        setJoinAnimations(prev => [...prev, {
+          id: `anim-${player.id}-${Date.now()}`,
+          playerId: player.id,
+          position: { x: position.x || 0, y: position.y || 0, z: position.z || 0 },
+          timestamp: Date.now()
+        }])
+        
+        // Adicionar notificação
+        setNotifications(prev => [...prev, {
+          id: `notif-${player.id}-${Date.now()}`,
+          nickname: player.nickname,
+          timestamp: Date.now()
+        }])
+      } else {
+        console.log(`  ⏭️  Pulando a si mesmo`)
       }
     })
 
@@ -298,41 +333,77 @@ export default function App() {
 
     // Evento: Player saiu
     socket.on('playerDisconnected', (playerId) => {
-      console.log('Player saiu:', playerId)
+      console.log('👋 Player saiu:', playerId)
       removePlayer(playerId)
     })
 
     // Evento: Erro
     socket.on('error', ({ message }) => {
-      console.error('Erro do servidor:', message)
+      console.error('❌ Erro do servidor:', message)
     })
 
     return () => {
+      console.log('🧹 Removendo listeners Socket.IO')
       socket.off('currentPlayers')
       socket.off('newPlayer')
       socket.off('playerMoved')
       socket.off('playerDisconnected')
       socket.off('error')
     }
-  }, [socket, hasJoined, addPlayer, updatePlayer, removePlayer])
+  }, [socket, addPlayer, updatePlayer, removePlayer])
   
   const handleJoin = (nickname, characterType) => {
+    console.log('🎮 handleJoin chamado:', { nickname, characterType })
     setPlayerData({ nickname, characterType })
     setHasJoined(true)
     
     // Conectar ao servidor e enviar dados do player
     // Aguardar socket estar conectado antes de enviar
     if (socket) {
+      console.log('🔌 Socket disponível, conectado:', socket.connected)
       if (socket.connected) {
+        console.log('📤 Enviando join imediatamente...')
         socket.emit('join', { nickname, characterType })
+        
+        // Adicionar animação de entrada para o próprio player (posição inicial)
+        const initialPosition = { x: 0, y: 0, z: 0 }
+        setJoinAnimations(prev => [...prev, {
+          id: `anim-self-${Date.now()}`,
+          playerId: 'self',
+          position: initialPosition,
+          timestamp: Date.now()
+        }])
       } else {
+        console.log('⏳ Aguardando conexão do socket...')
         // Se ainda não conectou, aguardar conexão
         socket.once('connect', () => {
+          console.log('✅ Socket conectado, enviando join...')
           socket.emit('join', { nickname, characterType })
+          
+          // Adicionar animação de entrada para o próprio player
+          const initialPosition = { x: 0, y: 0, z: 0 }
+          setJoinAnimations(prev => [...prev, {
+            id: `anim-self-${Date.now()}`,
+            playerId: 'self',
+            position: initialPosition,
+            timestamp: Date.now()
+          }])
         })
       }
+    } else {
+      console.error('❌ Socket não disponível!')
     }
   }
+  
+  // Remover animações antigas após duração
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now()
+      setJoinAnimations(prev => prev.filter(anim => now - anim.timestamp < 2000))
+    }, 1000)
+    
+    return () => clearInterval(interval)
+  }, [])
   
   // Se ainda não entrou, mostrar tela de seleção
   if (!hasJoined) {
@@ -406,6 +477,15 @@ export default function App() {
             {Object.values(players).map(player => (
               <RemotePlayer key={player.id} player={player} />
             ))}
+            
+            {/* Animações de entrada */}
+            {joinAnimations.map(anim => (
+              <JoinAnimation
+                key={anim.id}
+                position={anim.position}
+                duration={2}
+              />
+            ))}
           </KeyboardControls>
           {/* Plano simples como chão - ESPESSURA AUMENTADA */}
           <RigidBody type="fixed" position={[0, 0, 0]} colliders="cuboid">
@@ -420,6 +500,17 @@ export default function App() {
       </Fisheye>
     </Canvas>
     <PauseMenu isPaused={isPaused} onResume={() => setIsPaused(false)} />
+    
+    {/* Notificações de entrada */}
+    {notifications.map(notif => (
+      <JoinNotification
+        key={notif.id}
+        nickname={notif.nickname}
+        onComplete={() => {
+          setNotifications(prev => prev.filter(n => n.id !== notif.id))
+        }}
+      />
+    ))}
     </>
   )
 }

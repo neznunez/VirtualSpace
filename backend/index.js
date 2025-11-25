@@ -28,19 +28,23 @@ app.get('/health', (req, res) => {
 
 // Socket.IO - Gerenciamento de conexões
 io.on('connection', (socket) => {
-  console.log(`Cliente conectado: ${socket.id}`)
+  console.log(`🔌 Cliente conectado: ${socket.id}`)
+  console.log(`📊 Total de conexões: ${io.sockets.sockets.size}`)
 
   // Evento: Player entra na sala
   socket.on('join', (data) => {
+    console.log(`📥 Recebido 'join' de ${socket.id}:`, data)
     const { nickname, characterType } = data
     
     // Validar dados
     if (!nickname || nickname.trim().length === 0) {
+      console.log(`❌ Nickname inválido de ${socket.id}`)
       socket.emit('error', { message: 'Nickname inválido' })
       return
     }
 
     if (characterType === undefined || characterType < 0 || characterType > 2) {
+      console.log(`❌ CharacterType inválido de ${socket.id}:`, characterType)
       socket.emit('error', { message: 'Tipo de personagem inválido' })
       return
     }
@@ -54,13 +58,21 @@ io.on('connection', (socket) => {
       rotation: { x: 0, y: 0, z: 0 }
     }
 
-    console.log(`Player ${nickname} (${socket.id}) entrou na sala`)
+    console.log(`✅ Player ${nickname} (${socket.id}) entrou na sala`)
+    console.log(`📊 Total de players agora: ${Object.keys(players).length}`)
+    console.log(`👥 Players atuais:`, Object.keys(players).map(id => players[id].nickname))
 
     // Enviar estado atual de todos os players para o novo cliente
+    console.log(`📤 Enviando 'currentPlayers' para ${socket.id}:`, players)
     socket.emit('currentPlayers', players)
 
     // Informar aos outros clientes que um novo player entrou
-    socket.broadcast.emit('newPlayer', players[socket.id])
+    if (Object.keys(players).length > 1) {
+      console.log(`📢 Broadcast 'newPlayer' para outros clientes:`, players[socket.id])
+      socket.broadcast.emit('newPlayer', players[socket.id])
+    } else {
+      console.log(`ℹ️  Primeiro player, sem broadcast necessário`)
+    }
   })
 
   // Evento: Player se move
