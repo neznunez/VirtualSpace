@@ -1,9 +1,14 @@
 import { Canvas, useThree, useFrame } from '@react-three/fiber'
 import { Physics, RigidBody, useRapier } from '@react-three/rapier'
-import { Gltf, useEnvironment, Fisheye, KeyboardControls } from '@react-three/drei'
+import { Gltf, useEnvironment, Fisheye, KeyboardControls, Text } from '@react-three/drei'
 import { useEffect, useMemo, useState, useRef } from 'react'
 import * as THREE from 'three'
 import Controller from 'ecctrl'
+import CharacterSelection from './components/CharacterSelection'
+import RemotePlayer from './components/RemotePlayer'
+import { useSocket } from './hooks/useSocket'
+import { usePlayers } from './hooks/usePlayers'
+import { PlayerSync } from './hooks/usePlayerSync'
 
 function SceneSetup() {
   const envMap = useEnvironment({ files: '/night.hdr' })
@@ -233,6 +238,13 @@ function PauseMenu({ isPaused, onResume }) {
 
 export default function App() {
   const [isPaused, setIsPaused] = useState(false)
+  const [hasJoined, setHasJoined] = useState(false)
+  const [playerData, setPlayerData] = useState(null) // { nickname, characterType }
+  
+  // Socket.IO e gerenciamento de players
+  const { socket, isConnected } = useSocket()
+  const { players, addPlayer, updatePlayer, removePlayer, clearPlayers } = usePlayers()
+  
   const keyboardMap = [
     { name: 'forward', keys: ['ArrowUp', 'KeyW'] },
     { name: 'backward', keys: ['ArrowDown', 'KeyS'] },
@@ -257,6 +269,82 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
   
+  // Configurar eventos Socket.IO quando conectar
+  useEffect(() => {
+    if (!socket || !hasJoined) return
+
+    // Evento: Receber lista de players ao conectar
+    socket.on('currentPlayers', (playersList) => {
+      console.log('Players atuais:', playersList)
+      Object.values(playersList).forEach(player => {
+        if (player.id !== socket.id) { // Não adicionar a si mesmo
+          addPlayer(player)
+        }
+      })
+    })
+
+    // Evento: Novo player entrou
+    socket.on('newPlayer', (player) => {
+      console.log('Novo player entrou:', player)
+      if (player.id !== socket.id) {
+        addPlayer(player)
+      }
+    })
+
+    // Evento: Player se moveu
+    socket.on('playerMoved', ({ id, position, rotation }) => {
+      updatePlayer(id, position, rotation)
+    })
+
+    // Evento: Player saiu
+    socket.on('playerDisconnected', (playerId) => {
+      console.log('Player saiu:', playerId)
+      removePlayer(playerId)
+    })
+
+    // Evento: Erro
+    socket.on('error', ({ message }) => {
+      console.error('Erro do servidor:', message)
+    })
+
+    return () => {
+      socket.off('currentPlayers')
+      socket.off('newPlayer')
+      socket.off('playerMoved')
+      socket.off('playerDisconnected')
+      socket.off('error')
+    }
+  }, [socket, hasJoined, addPlayer, updatePlayer, removePlayer])
+  
+  const handleJoin = (nickname, characterType) => {
+    setPlayerData({ nickname, characterType })
+    setHasJoined(true)
+    
+    // Conectar ao servidor e enviar dados do player
+    // Aguardar socket estar conectado antes de enviar
+    if (socket) {
+      if (socket.connected) {
+        socket.emit('join', { nickname, characterType })
+      } else {
+        // Se ainda não conectou, aguardar conexão
+        socket.once('connect', () => {
+          socket.emit('join', { nickname, characterType })
+        })
+      }
+    }
+  }
+  
+  // Se ainda não entrou, mostrar tela de seleção
+  if (!hasJoined) {
+    return <CharacterSelection onJoin={handleJoin} />
+  }
+  
+  // Determinar qual modelo usar baseado no characterType
+  const getCharacterModel = (type) => {
+    const models = ['/VirtualHead.glb', '/NPCHead.glb', '/ghost_w_tophat-transformed.glb']
+    return models[type] || models[0]
+  }
+  
   return (
     <>
       <Canvas 
@@ -277,12 +365,47 @@ export default function App() {
         <ambientLight intensity={0.2} />
         <Physics timeStep={1/60}>
           <PhysicsPauser isPaused={isPaused} />
+          <PlayerSync socket={socket} isPaused={isPaused} />
           <KeyboardControls map={keyboardMap} enabled={!isPaused}>
-            <Controller maxVelLimit={5}>
+            <Controller 
+              maxVelLimit={5}
+              userData={{ isController: true }}
+            >
               <FloatingCharacter>
-                <Gltf castShadow receiveShadow scale={1.0} position={[0, 0, 0]} src="/VirtualHead.glb" />
+                {/* Nickname acima da cabeça do avatar */}
+                {playerData?.nickname && (
+                  <group position={[0, 2.3, 0]}>
+                    {/* Frame preto semi-transparente */}
+                    <mesh position={[0, 0, -0.01]}>
+                      <planeGeometry args={[playerData.nickname.length * 0.18 + 0.3, 0.45]} />
+                      <meshBasicMaterial color="#000000" transparent opacity={0.6} />
+                    </mesh>
+                    {/* Texto do nickname */}
+                    <Text
+                      position={[0, 0, 0]}
+                      fontSize={0.3}
+                      color="#ffffff"
+                      anchorX="center"
+                      anchorY="middle"
+                    >
+                      {playerData.nickname}
+                    </Text>
+                  </group>
+                )}
+                <Gltf 
+                  castShadow 
+                  receiveShadow 
+                  scale={1.0} 
+                  position={[0, 0, 0]} 
+                  src={getCharacterModel(playerData.characterType)} 
+                />
               </FloatingCharacter>
             </Controller>
+            
+            {/* Renderizar players remotos */}
+            {Object.values(players).map(player => (
+              <RemotePlayer key={player.id} player={player} />
+            ))}
           </KeyboardControls>
           {/* Plano simples como chão - ESPESSURA AUMENTADA */}
           <RigidBody type="fixed" position={[0, 0, 0]} colliders="cuboid">

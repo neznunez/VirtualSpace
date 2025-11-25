@@ -1,2 +1,0 @@
-# VirtualSpace
-Created with CodeSandbox
