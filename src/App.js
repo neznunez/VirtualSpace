@@ -77,6 +77,120 @@ function FloatingCharacter({ children }) {
   )
 }
 
+function NPC({ position = [0, 0, 0] }) {
+  const npcRef = useRef()
+  const floatGroupRef = useRef()
+  const stateRef = useRef('idle') // 'idle' ou 'walking'
+  const timeRef = useRef(0)
+  const floatTimeRef = useRef(0)
+  const idleTimeRef = useRef(0)
+  const walkTimeRef = useRef(0)
+  const currentPosRef = useRef([position[0], position[1], position[2]])
+  const targetPosRef = useRef([position[0], position[1], position[2]])
+  const idleSwayRef = useRef(0)
+  
+  useFrame((state, delta) => {
+    // Flutuação contínua igual ao personagem principal
+    if (floatGroupRef.current) {
+      floatTimeRef.current += delta
+      const floatAmount = Math.sin(floatTimeRef.current * 2) * 0.1
+      floatGroupRef.current.position.y = floatAmount
+    }
+    
+    if (npcRef.current) {
+      timeRef.current += delta
+      
+      if (stateRef.current === 'idle') {
+        idleTimeRef.current += delta
+        idleSwayRef.current += delta * 0.5
+        
+        // Pequenos movimentos sutis quando parado (como Mii do Wii)
+        const swayX = Math.sin(idleSwayRef.current) * 0.05
+        const swayZ = Math.cos(idleSwayRef.current * 0.7) * 0.05
+        
+        npcRef.current.position.set(
+          currentPosRef.current[0] + swayX,
+          currentPosRef.current[1],
+          currentPosRef.current[2] + swayZ
+        )
+        
+        // Pequena rotação sutil
+        npcRef.current.rotation.y = Math.sin(idleSwayRef.current * 0.3) * 0.1
+        
+        // Após 3-5 segundos parado, decide caminhar
+        if (idleTimeRef.current > 3 + Math.random() * 2) {
+          stateRef.current = 'walking'
+          walkTimeRef.current = 0
+          idleTimeRef.current = 0
+          
+          // Define um destino aleatório próximo (2-4 unidades de distância)
+          const angle = Math.random() * Math.PI * 2
+          const distance = 2 + Math.random() * 2
+          targetPosRef.current = [
+            position[0] + Math.cos(angle) * distance,
+            position[1],
+            position[2] + Math.sin(angle) * distance
+          ]
+        }
+      } else if (stateRef.current === 'walking') {
+        walkTimeRef.current += delta
+        
+        // Move suavemente em direção ao alvo
+        const dx = targetPosRef.current[0] - currentPosRef.current[0]
+        const dz = targetPosRef.current[2] - currentPosRef.current[2]
+        const distance = Math.sqrt(dx * dx + dz * dz)
+        
+        if (distance > 0.1) {
+          // Caminha em direção ao alvo
+          const speed = 1.5 * delta
+          currentPosRef.current[0] += (dx / distance) * speed
+          currentPosRef.current[2] += (dz / distance) * speed
+          
+          npcRef.current.position.set(
+            currentPosRef.current[0],
+            currentPosRef.current[1],
+            currentPosRef.current[2]
+          )
+          
+          // Olha na direção do movimento
+          npcRef.current.lookAt(
+            targetPosRef.current[0],
+            currentPosRef.current[1],
+            targetPosRef.current[2]
+          )
+        } else {
+          // Chegou ao destino, volta para idle
+          currentPosRef.current = [...targetPosRef.current]
+          stateRef.current = 'idle'
+          idleTimeRef.current = 0
+          idleSwayRef.current = 0
+        }
+        
+        // Limite de tempo de caminhada (máximo 4 segundos)
+        if (walkTimeRef.current > 4) {
+          currentPosRef.current = [...targetPosRef.current]
+          stateRef.current = 'idle'
+          idleTimeRef.current = 0
+          idleSwayRef.current = 0
+        }
+      }
+    }
+  })
+  
+  return (
+    <group ref={npcRef} position={position}>
+      <group ref={floatGroupRef}>
+        <Gltf 
+          castShadow 
+          receiveShadow 
+          scale={1.15} 
+          src="/NPCHead.glb" 
+        />
+      </group>
+    </group>
+  )
+}
+
 function PauseMenu({ isPaused, onResume }) {
   if (!isPaused) return null
   
@@ -178,6 +292,8 @@ export default function App() {
             </mesh>
           </RigidBody>
         </Physics>
+        {/* NPC com comportamento estilo Mii do Wii */}
+        <NPC position={[10, 1, 0]} />
       </Fisheye>
     </Canvas>
     <PauseMenu isPaused={isPaused} onResume={() => setIsPaused(false)} />
