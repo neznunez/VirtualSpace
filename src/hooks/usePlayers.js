@@ -67,8 +67,33 @@ export function usePlayers() {
   const updatePlayer = useCallback((id, position, rotation) => {
     if (!id || typeof id !== 'string') return
 
-    const dyn = dynamicRef.current.get(id)
-    if (!dyn) return
+    let dyn = dynamicRef.current.get(id)
+    
+    // CORREÇÃO CRÍTICA: Se player não existe no Map, criar entry defensivamente
+    // Isso resolve race conditions onde playerMoved chega antes de addPlayer
+    if (!dyn) {
+      const adjustedY = position?.y === 0 ? 1.0 : (position?.y || 1.0)
+      dyn = {
+        position: new THREE.Vector3(
+          typeof position?.x === 'number' ? position.x : 0,
+          adjustedY,
+          typeof position?.z === 'number' ? position.z : 0
+        ),
+        rotY: typeof rotation?.y === 'number' ? rotation.y : 0,
+        lastUpdate: Date.now()
+      }
+      dynamicRef.current.set(id, dyn)
+      
+      // Adicionar no state também (dados estáticos básicos) se não existir
+      setPlayersList(prev => {
+        if (prev.some(p => p.id === id)) return prev
+        return [...prev, { 
+          id, 
+          nickname: `Player-${id.slice(0, 6)}`, 
+          characterType: 0 
+        }]
+      })
+    }
 
     // Validar e ajustar position
     const adjustedY = position?.y === 0 ? 1.0 : (position?.y || dyn.position.y)
