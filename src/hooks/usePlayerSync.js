@@ -3,46 +3,75 @@ import { useThree, useFrame } from '@react-three/fiber'
 import { useRapier } from '@react-three/rapier'
 
 // Componente interno para capturar posição do controller
-export function PlayerSync({ socket, isPaused }) {
+export function PlayerSync({ socket, isPaused, spawnPosition }) {
   const { scene } = useThree()
   const { world } = useRapier()
   const lastSentRef = useRef({ position: null, rotation: null })
   const lastTimeRef = useRef(0)
+  const lastHeartbeatRef = useRef(0)
   const controllerObjectRef = useRef(null)
+  const searchStartTimeRef = useRef(Date.now())
+  const fallbackPositionRef = useRef(spawnPosition ? { x: spawnPosition[0], y: spawnPosition[1], z: spawnPosition[2] } : null)
 
-  // Buscar controller uma vez quando o componente monta
-  useEffect(() => {
-    const findController = () => {
+  // Múltiplas estratégias de busca do controller
+  const findController = () => {
+    if (controllerObjectRef.current) return true
+
+    // Estratégia 1: Buscar por userData.isController
+    scene.traverse((obj) => {
       if (controllerObjectRef.current) return
-      
-      // Procurar por userData.isController (mais rápido)
+      if (obj.userData?.isController) {
+        controllerObjectRef.current = obj
+        console.log('✅ Controller encontrado via userData.isController')
+        return
+      }
+    })
+
+    // Estratégia 2: Buscar por RigidBody dinâmico
+    if (!controllerObjectRef.current && world) {
       scene.traverse((obj) => {
         if (controllerObjectRef.current) return
-        if (obj.userData?.isController) {
-          controllerObjectRef.current = obj
-          console.log('✅ Controller encontrado via userData')
-        }
-      })
-      
-      // Se não encontrou, procurar por RigidBody
-      if (!controllerObjectRef.current) {
-        scene.traverse((obj) => {
-          if (controllerObjectRef.current) return
-          if (obj.userData?.rapierBody) {
+        if (obj.userData?.rapierBody) {
+          try {
             const body = world.bodies.get(obj.userData.rapierBody)
             if (body && body.isDynamic()) {
               controllerObjectRef.current = obj
               console.log('✅ Controller encontrado via RigidBody')
+              return
             }
+          } catch (e) {
+            // Ignorar erros
           }
-        })
-      }
+        }
+      })
     }
 
-    // Tentar encontrar imediatamente
+    // Estratégia 3: Buscar por nome/tipo do objeto
+    if (!controllerObjectRef.current) {
+      scene.traverse((obj) => {
+        if (controllerObjectRef.current) return
+        // Procurar por objetos que podem ser o controller
+        if (obj.type === 'Group' && obj.children.length > 0) {
+          // Verificar se tem estrutura similar ao controller
+          const hasRigidBody = obj.userData?.rapierBody || obj.children.some(child => child.userData?.rapierBody)
+          if (hasRigidBody) {
+            controllerObjectRef.current = obj
+            console.log('✅ Controller encontrado via estrutura')
+            return
+          }
+        }
+      })
+    }
+
+    return !!controllerObjectRef.current
+  }
+
+  // Buscar controller quando componente monta
+  useEffect(() => {
+    searchStartTimeRef.current = Date.now()
     findController()
     
-    // Se não encontrou, tentar novamente após um delay
+    // Tentar novamente após delay se não encontrou
     if (!controllerObjectRef.current) {
       const timeout = setTimeout(() => {
         findController()
@@ -51,46 +80,60 @@ export function PlayerSync({ socket, isPaused }) {
     }
   }, [scene, world])
 
+  // Atualizar fallback position quando spawnPosition mudar
+  useEffect(() => {
+    if (spawnPosition && spawnPosition.length === 3) {
+      fallbackPositionRef.current = { x: spawnPosition[0], y: spawnPosition[1], z: spawnPosition[2] }
+    }
+  }, [spawnPosition])
+
   useFrame((state, delta) => {
     // Verificar se socket existe E está conectado
     if (!socket || !socket.connected || isPaused || !world) return
 
-    // Aumentar frequência para 60fps (~16ms) para melhor sincronização
     const now = Date.now()
-    if (now - lastTimeRef.current < 16) return // 60fps para movimento mais fluido
-    lastTimeRef.current = now
+    
+    // Buscar controller continuamente se não encontrado (a cada 60 frames ~1 segundo)
+    if (!controllerObjectRef.current && now % 1000 < 16) {
+      findController()
+    }
 
-    try {
-      // Buscar controller continuamente se não encontrado
-      if (!controllerObjectRef.current) {
-        scene.traverse((obj) => {
-          if (controllerObjectRef.current) return
-          if (obj.userData?.isController) {
-            controllerObjectRef.current = obj
-          }
-        })
-      }
+    // Se não encontrou após 5 segundos, usar fallback
+    const timeSinceSearchStart = now - searchStartTimeRef.current
+    let position, rotation
 
-      if (!controllerObjectRef.current) return
-      
+    if (controllerObjectRef.current) {
       // Verificar se o objeto ainda existe na cena
       if (!controllerObjectRef.current.parent && !scene.getObjectById(controllerObjectRef.current.id)) {
         controllerObjectRef.current = null
         return
       }
 
-      const position = {
+      position = {
         x: controllerObjectRef.current.position.x || 0,
         y: controllerObjectRef.current.position.y || 0,
         z: controllerObjectRef.current.position.z || 0
       }
 
-      const rotation = {
+      rotation = {
         x: controllerObjectRef.current.rotation.x || 0,
         y: controllerObjectRef.current.rotation.y || 0,
         z: controllerObjectRef.current.rotation.z || 0
       }
+    } else if (timeSinceSearchStart > 5000 && fallbackPositionRef.current) {
+      // Fallback: usar spawnPosition se não encontrou controller após 5 segundos
+      position = { ...fallbackPositionRef.current }
+      rotation = { x: 0, y: 0, z: 0 }
+    } else {
+      // Ainda procurando, não enviar nada
+      return
+    }
 
+    // Frequência de atualização: 60fps (~16ms)
+    if (now - lastTimeRef.current < 16) return
+    lastTimeRef.current = now
+
+    try {
       // Threshold muito baixo para garantir envio frequente
       const threshold = 0.001
       const lastSent = lastSentRef.current
@@ -102,9 +145,15 @@ export function PlayerSync({ socket, isPaused }) {
         Math.abs(position.z - lastSent.position.z) > threshold ||
         Math.abs(rotation.y - (lastSent.rotation?.y || 0)) > threshold
 
-      if (hasChanged && socket.connected) {
+      // Heartbeat: enviar posição mesmo sem mudança a cada 2 segundos
+      const needsHeartbeat = now - lastHeartbeatRef.current > 2000
+
+      if ((hasChanged || needsHeartbeat) && socket.connected) {
         socket.emit('playerMove', { position, rotation })
         lastSentRef.current = { position: { ...position }, rotation: { ...rotation } }
+        if (needsHeartbeat) {
+          lastHeartbeatRef.current = now
+        }
       }
     } catch (error) {
       console.error('Erro no PlayerSync:', error)

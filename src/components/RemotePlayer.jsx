@@ -20,11 +20,18 @@ const RemotePlayer = memo(function RemotePlayer({ player }) {
   const fadeTimeRef = useRef(0)
   const [opacity, setOpacity] = useState(0) // Começar invisível para fade in
   
-  // Garantir que position existe, senão usar (0, 1.0, 0) - Y padrão do ecctrl
-  const initialPos = player.position || { x: 0, y: 1.0, z: 0 }
-  // Se Y for 0, ajustar para 1.0 (altura padrão do ecctrl)
-  const adjustedY = initialPos.y === 0 ? 1.0 : initialPos.y
-  const targetPosition = useRef(new THREE.Vector3(initialPos.x, adjustedY, initialPos.z))
+  // Calcular posição ajustada (memoizado para evitar recálculos)
+  const adjustedPosition = useMemo(() => {
+    const pos = player.position || { x: 0, y: 1.0, z: 0 }
+    return {
+      x: pos.x || 0,
+      y: pos.y === 0 ? 1.0 : (pos.y || 1.0),
+      z: pos.z || 0
+    }
+  }, [player.position?.x, player.position?.y, player.position?.z])
+
+  // Inicializar targetPosition com a posição ajustada
+  const targetPosition = useRef(new THREE.Vector3(adjustedPosition.x, adjustedPosition.y, adjustedPosition.z))
   const targetRotation = useRef(player.rotation?.y || 0)
   
   // Fade in quando o player é criado
@@ -47,14 +54,8 @@ const RemotePlayer = memo(function RemotePlayer({ player }) {
   }, [player.id]) // Reset quando player muda
 
   // Atualizar posição alvo quando receber novos dados do player
-  // Usar valores específicos para evitar re-execuções desnecessárias
   useEffect(() => {
-    const pos = player.position || { x: 0, y: 1.0, z: 0 }
-    // Se Y for 0, ajustar para 1.0 (altura padrão do ecctrl Controller)
-    const adjustedY = pos.y === 0 ? 1.0 : pos.y
-    const newTarget = new THREE.Vector3(pos.x, adjustedY, pos.z)
-    
-    console.log(`📍 [RemotePlayer] Atualizando posição de ${player.nickname}:`, { x: pos.x, y: adjustedY, z: pos.z })
+    const newTarget = new THREE.Vector3(adjustedPosition.x, adjustedPosition.y, adjustedPosition.z)
     
     // Se for a primeira vez ou mudança grande (spawn inicial ou lag), teleportar
     if (groupRef.current) {
@@ -62,29 +63,16 @@ const RemotePlayer = memo(function RemotePlayer({ player }) {
       if (distance > 5) {
         // Teleportar se muito longe (spawn inicial ou lag severo)
         groupRef.current.position.copy(newTarget)
-        console.log(`🚀 [RemotePlayer] Teleportando player remoto ${player.nickname}:`, { x: pos.x, y: adjustedY, z: pos.z })
       }
     }
     
-    targetPosition.current.set(pos.x, adjustedY, pos.z)
+    targetPosition.current.set(adjustedPosition.x, adjustedPosition.y, adjustedPosition.z)
     targetRotation.current = player.rotation?.y ?? 0
-  }, [
-    player.position?.x, 
-    player.position?.y, 
-    player.position?.z,
-    player.rotation?.y
-  ])
+  }, [adjustedPosition.x, adjustedPosition.y, adjustedPosition.z, player.rotation?.y])
 
   // Interpolação suave de posição e rotação + animação de flutuação
   useFrame((state, delta) => {
     if (groupRef.current) {
-      // FALLBACK: Atualizar targetPosition diretamente do player.position (garantia extra)
-      // Isso garante que mesmo se o useEffect não acionar, a posição seja atualizada
-      const pos = player.position || { x: 0, y: 1.0, z: 0 }
-      const adjustedY = pos.y === 0 ? 1.0 : pos.y
-      targetPosition.current.set(pos.x, adjustedY, pos.z)
-      targetRotation.current = player.rotation?.y ?? 0
-      
       // Lerp mais rápido e responsivo para movimento mais fluido
       // Usar delta * 25 para interpolação frame-rate independent mais rápida
       const lerpFactor = Math.min(delta * 25, 0.5) // Máximo 50% por frame (mais responsivo)
@@ -172,27 +160,28 @@ const RemotePlayer = memo(function RemotePlayer({ player }) {
     </group>
   )
 }, (prevProps, nextProps) => {
-  // Comparação customizada - PERMITIR atualizações de posição
+  // Comparação simplificada - sempre permitir re-render se dados básicos mudaram
+  if (!prevProps.player || !nextProps.player) return false
+  
   // Se ID mudou, re-render
-  if (prevProps.player?.id !== nextProps.player?.id) return false
+  if (prevProps.player.id !== nextProps.player.id) return false
   
   // Se dados básicos mudaram, re-render
-  if (prevProps.player?.nickname !== nextProps.player?.nickname) return false
-  if (prevProps.player?.characterType !== nextProps.player?.characterType) return false
+  if (prevProps.player.nickname !== nextProps.player.nickname) return false
+  if (prevProps.player.characterType !== nextProps.player.characterType) return false
   
-  // Comparar posição com precisão maior (detectar mudanças muito pequenas)
-  const prevPos = prevProps.player?.position || { x: 0, y: 1.0, z: 0 }
-  const nextPos = nextProps.player?.position || { x: 0, y: 1.0, z: 0 }
+  // Comparar posição - sempre permitir re-render se posição mudou
+  const prevPos = prevProps.player.position || { x: 0, y: 1.0, z: 0 }
+  const nextPos = nextProps.player.position || { x: 0, y: 1.0, z: 0 }
   
-  // Se qualquer coordenada mudou (mesmo que pouco), re-render
+  // Se qualquer coordenada mudou, re-render
   const posChanged = 
-    Math.abs(prevPos.x - nextPos.x) > 0.0001 ||
-    Math.abs(prevPos.y - nextPos.y) > 0.0001 ||
-    Math.abs(prevPos.z - nextPos.z) > 0.0001 ||
-    Math.abs((prevProps.player?.rotation?.y || 0) - (nextProps.player?.rotation?.y || 0)) > 0.0001
+    prevPos.x !== nextPos.x ||
+    prevPos.y !== nextPos.y ||
+    prevPos.z !== nextPos.z ||
+    (prevProps.player.rotation?.y || 0) !== (nextProps.player.rotation?.y || 0)
   
   // Se posição mudou, re-render (retorna false = não é igual = precisa re-render)
-  // Se não mudou, não re-render (retorna true = é igual = não precisa re-render)
   return !posChanged
 })
 

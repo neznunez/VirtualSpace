@@ -96,20 +96,49 @@ io.on('connection', (socket) => {
 
   // Evento: Player se move
   socket.on('playerMove', (data) => {
+    // Validação rigorosa de dados recebidos
+    if (!data || typeof data !== 'object') {
+      console.warn(`⚠️ [Backend] Dados inválidos de ${socket.id}:`, data)
+      return
+    }
+
     const { position, rotation } = data
-    console.log(`📥 [Backend] Recebido playerMove de ${socket.id}:`, { position, rotation })
+
+    // Validar estrutura de position
+    if (!position || typeof position !== 'object') {
+      console.warn(`⚠️ [Backend] Position inválido de ${socket.id}:`, position)
+      return
+    }
+
+    // Validar estrutura de rotation
+    if (!rotation || typeof rotation !== 'object') {
+      console.warn(`⚠️ [Backend] Rotation inválido de ${socket.id}:`, rotation)
+      return
+    }
+
+    // Validar tipos de valores
+    const validatedPosition = {
+      x: typeof position.x === 'number' ? position.x : 0,
+      y: typeof position.y === 'number' ? position.y : 1.0,
+      z: typeof position.z === 'number' ? position.z : 0
+    }
+
+    const validatedRotation = {
+      x: typeof rotation.x === 'number' ? rotation.x : 0,
+      y: typeof rotation.y === 'number' ? rotation.y : 0,
+      z: typeof rotation.z === 'number' ? rotation.z : 0
+    }
 
     // Atualizar posição do player
     if (players[socket.id]) {
-      players[socket.id].position = position
-      players[socket.id].rotation = rotation
+      players[socket.id].position = validatedPosition
+      players[socket.id].rotation = validatedRotation
 
-      // Informar aos outros clientes sobre o movimento
-      console.log(`📤 [Backend] Broadcast playerMoved para outros clientes:`, { id: socket.id, position, rotation })
+      // Informar aos outros clientes sobre o movimento (sempre enviar dados completos)
       socket.broadcast.emit('playerMoved', {
         id: socket.id,
-        position,
-        rotation
+        position: validatedPosition,
+        rotation: validatedRotation
       })
     } else {
       console.warn(`⚠️ [Backend] Player ${socket.id} não encontrado ao receber playerMove`)

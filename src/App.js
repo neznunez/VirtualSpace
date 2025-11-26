@@ -471,7 +471,7 @@ export default function App() {
         <ambientLight intensity={0.2} />
         <Physics timeStep={1/60}>
           <PhysicsPauser isPaused={isPaused} />
-          <PlayerSync socket={socket} isPaused={isPaused} />
+          <PlayerSync socket={socket} isPaused={isPaused} spawnPosition={spawnPosition} />
           <KeyboardControls map={keyboardMap} enabled={!isPaused}>
             <Controller 
               maxVelLimit={5}

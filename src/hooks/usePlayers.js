@@ -33,16 +33,41 @@ export function usePlayers() {
 
   // Atualizar posição/rotação - SEMPRE atualizar state para trigger re-render
   const updatePlayer = useCallback((id, position, rotation) => {
-    // Ajustar Y se for 0 (altura padrão do ecctrl é 1.0)
-    const adjustedPosition = { ...position }
-    if (adjustedPosition.y === 0) {
-      adjustedPosition.y = 1.0
+    // Validação rigorosa de dados recebidos
+    if (!id || typeof id !== 'string') {
+      console.warn('⚠️ [usePlayers] ID inválido:', id)
+      return
+    }
+
+    if (!position || typeof position !== 'object') {
+      console.warn('⚠️ [usePlayers] Position inválido:', position)
+      return
+    }
+
+    if (!rotation || typeof rotation !== 'object') {
+      console.warn('⚠️ [usePlayers] Rotation inválido:', rotation)
+      return
+    }
+
+    // Validar estrutura de position
+    const adjustedPosition = {
+      x: typeof position.x === 'number' ? position.x : 0,
+      y: typeof position.y === 'number' ? (position.y === 0 ? 1.0 : position.y) : 1.0,
+      z: typeof position.z === 'number' ? position.z : 0
+    }
+
+    // Validar estrutura de rotation
+    const validatedRotation = {
+      x: typeof rotation.x === 'number' ? rotation.x : 0,
+      y: typeof rotation.y === 'number' ? rotation.y : 0,
+      z: typeof rotation.z === 'number' ? rotation.z : 0
     }
     
     // Atualizar no ref
     if (positionsRef.current[id]) {
       positionsRef.current[id].position = adjustedPosition
-      positionsRef.current[id].rotation = rotation
+      positionsRef.current[id].rotation = validatedRotation
+      positionsRef.current[id].lastUpdate = Date.now()
     }
     
     // IMPORTANTE: SEMPRE atualizar state (SEM verificação de hasChanged)
@@ -54,13 +79,13 @@ export function usePlayers() {
       }
       
       // SEMPRE criar novos objetos para garantir que React detecte a mudança
-      console.log(`🔄 [usePlayers] Atualizando player ${id}:`, adjustedPosition)
       return {
         ...prev,
         [id]: {
           ...prev[id],
           position: { ...adjustedPosition }, // Novo objeto - SEMPRE
-          rotation: { ...rotation }  // Novo objeto - SEMPRE
+          rotation: { ...validatedRotation },  // Novo objeto - SEMPRE
+          lastUpdate: Date.now() // Timestamp para rastreamento
         }
       }
     })
