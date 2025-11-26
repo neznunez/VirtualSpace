@@ -119,13 +119,19 @@ io.on('connection', (socket) => {
   // Evento: Player desconecta
   socket.on('disconnect', () => {
     if (players[socket.id]) {
-      console.log(`Player ${players[socket.id].nickname} (${socket.id}) saiu da sala`)
+      const playerNickname = players[socket.id].nickname
+      console.log(`👋 [Backend] Player ${playerNickname} (${socket.id}) desconectou`)
       
       // Remover player
       delete players[socket.id]
 
-      // Informar aos outros clientes
+      // Informar aos outros clientes sobre a desconexão
+      console.log(`📤 [Backend] Broadcast playerDisconnected para outros clientes: ${socket.id}`)
       socket.broadcast.emit('playerDisconnected', socket.id)
+      
+      console.log(`📊 [Backend] Total de players agora: ${Object.keys(players).length}`)
+    } else {
+      console.log(`ℹ️ [Backend] Socket ${socket.id} desconectou, mas não estava na lista de players`)
     }
   })
 })

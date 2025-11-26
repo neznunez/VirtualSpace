@@ -68,10 +68,16 @@ export function usePlayers() {
 
   // Remover um player
   const removePlayer = useCallback((id) => {
+    console.log(`🗑️ [usePlayers] Removendo player: ${id}`)
     setPlayers(prev => {
+      if (!prev[id]) {
+        console.warn(`⚠️ [usePlayers] Tentando remover player inexistente: ${id}`)
+        return prev
+      }
       const newPlayers = { ...prev }
       delete newPlayers[id]
       delete positionsRef.current[id]
+      console.log(`✅ [usePlayers] Player ${id} removido. Players restantes: ${Object.keys(newPlayers).length}`)
       return newPlayers
     })
   }, [])

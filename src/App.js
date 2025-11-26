@@ -357,8 +357,16 @@ export default function App() {
 
     // Evento: Player saiu
     socket.on('playerDisconnected', (playerId) => {
-      console.log('👋 Player saiu:', playerId)
-      removePlayer(playerId)
+      console.log('👋 [App] Player desconectado:', playerId)
+      if (playerId) {
+        removePlayer(playerId)
+      }
+    })
+
+    // Evento: Próprio usuário desconectou (limpar todos os players remotos)
+    socket.on('disconnect', () => {
+      console.log('👋 [App] Desconectado do servidor, limpando players remotos')
+      clearPlayers()
     })
 
     // Evento: Erro
@@ -372,9 +380,10 @@ export default function App() {
       socket.off('newPlayer')
       socket.off('playerMoved')
       socket.off('playerDisconnected')
+      socket.off('disconnect')
       socket.off('error')
     }
-  }, [socket, socket?.connected, addPlayer, updatePlayer, removePlayer])
+  }, [socket, socket?.connected, addPlayer, updatePlayer, removePlayer, clearPlayers])
   
   const handleJoin = (nickname, characterType) => {
     console.log('🎮 handleJoin chamado:', { nickname, characterType })
