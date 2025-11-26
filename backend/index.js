@@ -130,8 +130,7 @@ io.on('connection', (socket) => {
       players[socket.id].position = validatedPosition
       players[socket.id].rotation = validatedRotation
 
-      // Informar aos outros clientes sobre o movimento (sempre enviar dados completos)
-      // Frontend ainda espera estrutura completa no playerMoved
+      // Informar aos outros clientes sobre o movimento
       socket.broadcast.emit('playerMoved', {
         id: socket.id,
         position: validatedPosition,

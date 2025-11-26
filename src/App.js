@@ -294,30 +294,19 @@ export default function App() {
   useEffect(() => {
     if (!socket || !socket.connected) return
 
-    console.log('📡 Configurando eventos Socket.IO...')
 
     // Evento: Receber lista de players ao conectar
     socket.on('currentPlayers', (playersList) => {
-      console.log('👥 Players atuais recebidos:', playersList)
-      console.log('📊 Total de players:', Object.keys(playersList).length)
-      console.log('🆔 Meu socket.id:', socket.id)
-      
       Object.values(playersList).forEach(player => {
-        console.log(`  - Player: ${player.nickname} (${player.id})`)
         if (player.id !== socket.id) { // Não adicionar a si mesmo
-          console.log(`  ✅ Adicionando player remoto: ${player.nickname}`)
-          console.log(`  📋 Dados do player:`, { id: player.id, nickname: player.nickname, position: player.position })
           addPlayer(player)
-          console.log(`  ✅ addPlayer chamado para ${player.id}`)
         } else {
-          console.log(`  ⏭️  Pulando a si mesmo`)
           // Se for o próprio player, usar a posição do servidor para spawn
           if (player.position) {
             // Ajustar Y se for 0 (altura padrão do ecctrl é 1.0)
             const spawnY = player.position.y === 0 ? 1.0 : player.position.y
             // Definir posição de spawn do player local
             setSpawnPosition([player.position.x, spawnY, player.position.z])
-            console.log('🎯 Spawn position definida:', [player.position.x, spawnY, player.position.z])
             
             // Atualizar animação do próprio player com posição correta
             setJoinAnimations(prev => {
@@ -338,13 +327,8 @@ export default function App() {
 
     // Evento: Novo player entrou
     socket.on('newPlayer', (player) => {
-      console.log('🆕 Novo player entrou:', player)
-      console.log('🆔 Meu socket.id:', socket.id, '| Player.id:', player.id)
       if (player.id !== socket.id) {
-        console.log(`  ✅ Adicionando novo player: ${player.nickname}`)
-        console.log(`  📋 Dados do player:`, { id: player.id, nickname: player.nickname, position: player.position })
         addPlayer(player)
-        console.log(`  ✅ addPlayer chamado para ${player.id}`)
         
         // Adicionar animação de entrada na posição do player
         const position = player.position || { x: 0, y: 0, z: 0 }
@@ -368,21 +352,11 @@ export default function App() {
 
     // Evento: Player se moveu
     socket.on('playerMoved', ({ id, position, rotation }) => {
-      console.log('📥 [App] Recebido playerMoved:', { id, position, rotation })
-      // CORREÇÃO: Usar função de callback para pegar o estado atual
       updatePlayer(id, position, rotation)
-      
-      // DEBUG: Verificar se player existe no Map
-      const dyn = getDynamic(id)
-      console.log('🔍 [App] getDynamic após updatePlayer:', dyn ? {
-        position: { x: dyn.position.x, y: dyn.position.y, z: dyn.position.z },
-        rotY: dyn.rotY
-      } : 'null')
     })
 
     // Evento: Player saiu
     socket.on('playerDisconnected', (playerId) => {
-      console.log('👋 [App] Player desconectado:', playerId)
       if (playerId) {
         removePlayer(playerId)
       }
@@ -390,17 +364,14 @@ export default function App() {
 
     // Evento: Próprio usuário desconectou (limpar todos os players remotos)
     socket.on('disconnect', () => {
-      console.log('👋 [App] Desconectado do servidor, limpando players remotos')
       clearPlayers()
     })
 
     // Evento: Erro
     socket.on('error', ({ message }) => {
-      console.error('❌ Erro do servidor:', message)
     })
 
     return () => {
-      console.log('🧹 Removendo listeners Socket.IO')
       socket.off('currentPlayers')
       socket.off('newPlayer')
       socket.off('playerMoved')
@@ -411,16 +382,13 @@ export default function App() {
   }, [socket, socket?.connected, addPlayer, updatePlayer, removePlayer, clearPlayers])
   
   const handleJoin = (nickname, characterType) => {
-    console.log('🎮 handleJoin chamado:', { nickname, characterType })
     setPlayerData({ nickname, characterType })
     setHasJoined(true)
     
     // Conectar ao servidor e enviar dados do player
     // Aguardar socket estar conectado antes de enviar
     if (socket) {
-      console.log('🔌 Socket disponível, conectado:', socket.connected)
       if (socket.connected) {
-        console.log('📤 Enviando join imediatamente...')
         socket.emit('join', { nickname, characterType })
         
         // Adicionar animação de entrada para o próprio player
@@ -434,10 +402,8 @@ export default function App() {
           timestamp: Date.now()
         }])
       } else {
-        console.log('⏳ Aguardando conexão do socket...')
         // Se ainda não conectou, aguardar conexão
         socket.once('connect', () => {
-          console.log('✅ Socket conectado, enviando join...')
           socket.emit('join', { nickname, characterType })
           
           // Adicionar animação de entrada para o próprio player

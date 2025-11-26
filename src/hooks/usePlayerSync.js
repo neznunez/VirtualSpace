@@ -18,12 +18,11 @@ export function PlayerSync({ socket, isPaused, spawnPosition, controllerRef }) {
   const findController = () => {
     if (controllerObjectRef.current) return true
 
-    // Estratégia 1: Buscar por userData.isController
+    // Estratégia 1: Buscar por userData.isController (mais confiável)
     scene.traverse((obj) => {
       if (controllerObjectRef.current) return
-      if (obj.userData?.isController) {
+      if (obj.userData?.isController && obj.position) {
         controllerObjectRef.current = obj
-        console.log('✅ Controller encontrado via userData.isController')
         return
       }
     })
@@ -32,12 +31,11 @@ export function PlayerSync({ socket, isPaused, spawnPosition, controllerRef }) {
     if (!controllerObjectRef.current && world) {
       scene.traverse((obj) => {
         if (controllerObjectRef.current) return
-        if (obj.userData?.rapierBody) {
+        if (obj.userData?.rapierBody && obj.position) {
           try {
             const body = world.bodies.get(obj.userData.rapierBody)
             if (body && body.isDynamic()) {
               controllerObjectRef.current = obj
-              console.log('✅ Controller encontrado via RigidBody')
               return
             }
           } catch (e) {
@@ -47,17 +45,15 @@ export function PlayerSync({ socket, isPaused, spawnPosition, controllerRef }) {
       })
     }
 
-    // Estratégia 3: Buscar por nome/tipo do objeto
+    // Estratégia 3: Buscar por estrutura do ecctrl (Group com RigidBody)
     if (!controllerObjectRef.current) {
       scene.traverse((obj) => {
         if (controllerObjectRef.current) return
-        // Procurar por objetos que podem ser o controller
-        if (obj.type === 'Group' && obj.children.length > 0) {
-          // Verificar se tem estrutura similar ao controller
-          const hasRigidBody = obj.userData?.rapierBody || obj.children.some(child => child.userData?.rapierBody)
+        if (obj.type === 'Group' && obj.position && obj.children.length > 0) {
+          const hasRigidBody = obj.userData?.rapierBody || 
+                               obj.children.some(child => child.userData?.rapierBody)
           if (hasRigidBody) {
             controllerObjectRef.current = obj
-            console.log('✅ Controller encontrado via estrutura')
             return
           }
         }
@@ -103,20 +99,28 @@ export function PlayerSync({ socket, isPaused, spawnPosition, controllerRef }) {
     // CORREÇÃO: Priorizar ref direto do Controller (garantir referência única)
     let position, rotation
 
+    // Tentar usar ref direto primeiro (se Controller expor)
     if (controllerRef?.current) {
-      // CORREÇÃO: Usar ref direto - mesma referência que o Controller renderiza
-      position = {
-        x: controllerRef.current.position.x || 0,
-        y: controllerRef.current.position.y || 0,
-        z: controllerRef.current.position.z || 0
+      // Verificar se é um objeto Three.js válido
+      if (controllerRef.current.position && typeof controllerRef.current.position.x === 'number') {
+        position = {
+          x: controllerRef.current.position.x,
+          y: controllerRef.current.position.y,
+          z: controllerRef.current.position.z
+        }
+        rotation = {
+          x: controllerRef.current.rotation.x || 0,
+          y: controllerRef.current.rotation.y || 0,
+          z: controllerRef.current.rotation.z || 0
+        }
+      } else {
+        // Se ref não é objeto Three.js, buscar via traverse
+        controllerObjectRef.current = null
       }
-
-      rotation = {
-        x: controllerRef.current.rotation.x || 0,
-        y: controllerRef.current.rotation.y || 0,
-        z: controllerRef.current.rotation.z || 0
-      }
-    } else if (controllerObjectRef.current) {
+    }
+    
+    // Fallback: buscar via traverse se ref não funcionou
+    if (!position && controllerObjectRef.current) {
       // Fallback: buscar via traverse se ref não estiver disponível
       // Verificar se o objeto ainda existe na cena
       if (!controllerObjectRef.current.parent && !scene.getObjectById(controllerObjectRef.current.id)) {

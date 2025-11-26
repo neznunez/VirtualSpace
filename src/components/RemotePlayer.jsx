@@ -37,12 +37,6 @@ const RemotePlayer = memo(function RemotePlayer({ id, nickname, characterType, g
       targetPos.current.copy(dyn.position)
       targetRotY.current = dyn.rotY
       isInitialized.current = true
-      console.log(`✅ [RemotePlayer] ${id} inicializado na posição:`, {
-        x: dyn.position.x,
-        y: dyn.position.y,
-        z: dyn.position.z,
-        rotY: dyn.rotY
-      })
     } else {
       // Se não encontrou dados, marcar como não inicializado
       isInitialized.current = false
@@ -75,26 +69,8 @@ const RemotePlayer = memo(function RemotePlayer({ id, nickname, characterType, g
     // FASE 2: Pegar dados dinâmicos do Map (sem trigger re-render)
     const dyn = getDynamic(id)
     if (!dyn || !dyn.position) {
-      // DEBUG: Log apenas ocasionalmente
-      if (!g.userData._lastLog || Date.now() - g.userData._lastLog > 2000) {
-        console.warn(`⚠️ [RemotePlayer] ${id} sem dados dinâmicos. Inicializado: ${isInitialized.current}`)
-        g.userData._lastLog = Date.now()
-      }
-      // Se não encontrou dados e ainda não foi inicializado, tentar novamente
       if (!isInitialized.current) return
-      // Se já foi inicializado mas perdeu dados, manter posição atual
       return
-    }
-    
-    // DEBUG: Log quando encontra dados (apenas algumas vezes)
-    if (!g.userData._foundData || Date.now() - g.userData._foundData > 1000) {
-      console.log(`✅ [RemotePlayer] ${id} encontrou dados:`, {
-        x: dyn.position.x,
-        y: dyn.position.y,
-        z: dyn.position.z,
-        rotY: dyn.rotY
-      })
-      g.userData._foundData = Date.now()
     }
 
     // CORREÇÃO 3: Primeira vez que encontra dados válidos, teleportar imediatamente
@@ -104,11 +80,6 @@ const RemotePlayer = memo(function RemotePlayer({ id, nickname, characterType, g
       targetPos.current.copy(dyn.position)
       targetRotY.current = dyn.rotY
       isInitialized.current = true
-      console.log(`✅ [RemotePlayer] ${id} inicializado via useFrame na posição:`, {
-        x: dyn.position.x,
-        y: dyn.position.y,
-        z: dyn.position.z
-      })
       return
     }
 
@@ -117,12 +88,11 @@ const RemotePlayer = memo(function RemotePlayer({ id, nickname, characterType, g
     targetRotY.current = dyn.rotY
 
     // Teleporte se muito longe (lag severo ou erro de sincronização)
-    const TELEPORT_DISTANCE = 10 // Aumentado para 10 unidades
+    const TELEPORT_DISTANCE = 10
     const distance = g.position.distanceTo(targetPos.current)
     if (distance > TELEPORT_DISTANCE) {
       g.position.copy(targetPos.current)
       g.rotation.y = targetRotY.current
-      console.log(`🚀 [RemotePlayer] ${id} teleportado (distância: ${distance.toFixed(2)})`)
       return
     }
 
@@ -180,12 +150,6 @@ const RemotePlayer = memo(function RemotePlayer({ id, nickname, characterType, g
 
   return (
     <group ref={groupRef}>
-      {/* CORREÇÃO 4: DEBUG - Esfera na posição de rede (remover após validação) */}
-      <mesh position={targetPos.current}>
-        <sphereGeometry args={[0.15, 8, 8]} />
-        <meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.5} />
-      </mesh>
-      
       {/* Grupo de flutuação */}
       <group ref={floatGroupRef}>
         {/* Nickname acima da cabeça */}
