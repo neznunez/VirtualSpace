@@ -216,30 +216,16 @@ io.on('connection', (socket) => {
 
     // Atualizar posição do player
     if (players[socket.id]) {
-      const oldPos = players[socket.id].position
-      
-      // MELHORIA 4: Só broadcastar se mudança significativa (otimização de rede)
-      const hasSignificantChange = 
-        !oldPos ||
-        Math.abs(validatedX - oldPos.x) > CONFIG.POSITION_THRESHOLD ||
-        Math.abs(validatedY - oldPos.y) > CONFIG.POSITION_THRESHOLD ||
-        Math.abs(validatedZ - oldPos.z) > CONFIG.POSITION_THRESHOLD ||
-        Math.abs(validatedRy - players[socket.id].rotation.y) > 0.01
-      
       players[socket.id].position = validatedPosition
       players[socket.id].rotation = validatedRotation
-      players[socket.id].lastUpdate = now // Atualizar timestamp para heartbeat
+      players[socket.id].lastUpdate = now
 
-      // Informar aos outros clientes sobre o movimento (apenas se mudança significativa)
-      if (hasSignificantChange) {
-        socket.broadcast.emit('playerMoved', {
-          id: socket.id,
-          position: validatedPosition,
-          rotation: validatedRotation
-        })
-      }
-    } else {
-      console.warn(`⚠️ [Backend] Player ${socket.id} não encontrado ao receber playerMove`)
+      // Sempre enviar atualização para outros clientes
+      socket.broadcast.emit('playerMoved', {
+        id: socket.id,
+        position: validatedPosition,
+        rotation: validatedRotation
+      })
     }
   })
 
