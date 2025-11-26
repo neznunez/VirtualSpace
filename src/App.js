@@ -365,7 +365,16 @@ export default function App() {
     // Evento: Player se moveu
     socket.on('playerMoved', ({ id, position, rotation }) => {
       console.log('📥 [App] Recebido playerMoved:', { id, position, rotation })
+      console.log('📊 [App] PlayersList antes:', playersList.map(p => p.id))
       updatePlayer(id, position, rotation)
+      console.log('📊 [App] PlayersList depois:', playersList.map(p => p.id))
+      
+      // DEBUG: Verificar se player existe no Map
+      const dyn = getDynamic(id)
+      console.log('🔍 [App] getDynamic após updatePlayer:', dyn ? {
+        position: { x: dyn.position.x, y: dyn.position.y, z: dyn.position.z },
+        rotY: dyn.rotY
+      } : 'null')
     })
 
     // Evento: Player saiu

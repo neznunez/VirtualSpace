@@ -45,6 +45,15 @@ export function usePlayers() {
       lastUpdate: Date.now()
     })
 
+    // DEBUG: Verificar se foi criado corretamente
+    const created = dynamicRef.current.get(id)
+    console.log(`✅ [usePlayers] Player ${id} (${nickname}) adicionado no Map:`, {
+      position: { x: created.position.x, y: created.position.y, z: created.position.z },
+      rotY: created.rotY,
+      characterType,
+      totalPlayers: dynamicRef.current.size
+    })
+
     // FASE 2: Adicionar no state (dados estáticos) - apenas uma vez
     setPlayersList(prev => {
       // Verificar se já existe
@@ -76,14 +85,23 @@ export function usePlayers() {
       return
     }
 
+    console.log(`🔄 [usePlayers] updatePlayer chamado para ${id}:`, {
+      position,
+      rotation,
+      playersNoMap: Array.from(dynamicRef.current.keys())
+    })
+
     const dyn = dynamicRef.current.get(id)
     if (!dyn) {
       console.warn(`⚠️ [usePlayers] Tentando atualizar player inexistente: ${id}`)
+      console.warn(`📋 [usePlayers] Players disponíveis no Map:`, Array.from(dynamicRef.current.keys()))
       return
     }
 
     // Validar e ajustar position
     const adjustedY = position?.y === 0 ? 1.0 : (position?.y || dyn.position.y)
+    
+    const oldPos = { x: dyn.position.x, y: dyn.position.y, z: dyn.position.z }
     
     // FASE 2: Atualizar diretamente no Map (sem setState)
     dyn.position.set(
@@ -93,6 +111,13 @@ export function usePlayers() {
     )
     dyn.rotY = typeof rotation?.y === 'number' ? rotation.y : dyn.rotY
     dyn.lastUpdate = Date.now()
+    
+    const newPos = { x: dyn.position.x, y: dyn.position.y, z: dyn.position.z }
+    console.log(`✅ [usePlayers] Player ${id} atualizado:`, {
+      oldPos,
+      newPos,
+      rotY: dyn.rotY
+    })
     
     // NÃO chamar setState - isso elimina re-renders desnecessários!
   }, [])
@@ -128,7 +153,15 @@ export function usePlayers() {
   // FASE 2: Função para pegar dados dinâmicos (usado pelo RemotePlayer)
   const getDynamic = useCallback((id) => {
     const dyn = dynamicRef.current.get(id)
-    if (!dyn) return null
+    if (!dyn) {
+      // DEBUG: Log apenas ocasionalmente para evitar spam
+      if (!dynamicRef.current._lastLog || Date.now() - dynamicRef.current._lastLog > 2000) {
+        console.warn(`⚠️ [usePlayers] getDynamic: Player ${id} não encontrado no Map`)
+        console.warn(`📋 [usePlayers] Players disponíveis:`, Array.from(dynamicRef.current.keys()))
+        dynamicRef.current._lastLog = Date.now()
+      }
+      return null
+    }
     
     // Retornar clone para evitar mutação direta
     return {

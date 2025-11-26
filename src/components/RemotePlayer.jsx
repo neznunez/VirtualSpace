@@ -75,10 +75,26 @@ const RemotePlayer = memo(function RemotePlayer({ id, nickname, characterType, g
     // FASE 2: Pegar dados dinâmicos do Map (sem trigger re-render)
     const dyn = getDynamic(id)
     if (!dyn || !dyn.position) {
+      // DEBUG: Log apenas ocasionalmente
+      if (!g.userData._lastLog || Date.now() - g.userData._lastLog > 2000) {
+        console.warn(`⚠️ [RemotePlayer] ${id} sem dados dinâmicos. Inicializado: ${isInitialized.current}`)
+        g.userData._lastLog = Date.now()
+      }
       // Se não encontrou dados e ainda não foi inicializado, tentar novamente
       if (!isInitialized.current) return
       // Se já foi inicializado mas perdeu dados, manter posição atual
       return
+    }
+    
+    // DEBUG: Log quando encontra dados (apenas algumas vezes)
+    if (!g.userData._foundData || Date.now() - g.userData._foundData > 1000) {
+      console.log(`✅ [RemotePlayer] ${id} encontrou dados:`, {
+        x: dyn.position.x,
+        y: dyn.position.y,
+        z: dyn.position.z,
+        rotY: dyn.rotY
+      })
+      g.userData._foundData = Date.now()
     }
 
     // CORREÇÃO 3: Primeira vez que encontra dados válidos, teleportar imediatamente
