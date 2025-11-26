@@ -64,27 +64,28 @@ export function usePlayers() {
   }, [])
 
   // FASE 2: Atualizar posição/rotação - NÃO usa setState, apenas atualiza Map
+  // CORREÇÃO: Abordagem mais robusta baseada em three-arena
   const updatePlayer = useCallback((id, position, rotation) => {
     if (!id || typeof id !== 'string') return
+    if (!position || typeof position.x !== 'number') return // Validação rigorosa
 
     let dyn = dynamicRef.current.get(id)
     
-    // CORREÇÃO CRÍTICA: Se player não existe no Map, criar entry defensivamente
-    // Isso resolve race conditions onde playerMoved chega antes de addPlayer
+    // Se player não existe no Map, criar entry defensivamente
     if (!dyn) {
-      const adjustedY = position?.y === 0 ? 1.0 : (position?.y || 1.0)
+      const adjustedY = position.y === 0 ? 1.0 : position.y
       dyn = {
         position: new THREE.Vector3(
-          typeof position?.x === 'number' ? position.x : 0,
+          position.x || 0,
           adjustedY,
-          typeof position?.z === 'number' ? position.z : 0
+          position.z || 0
         ),
-        rotY: typeof rotation?.y === 'number' ? rotation.y : 0,
+        rotY: rotation?.y || 0,
         lastUpdate: Date.now()
       }
       dynamicRef.current.set(id, dyn)
       
-      // Adicionar no state também (dados estáticos básicos) se não existir
+      // Adicionar no state também se não existir
       setPlayersList(prev => {
         if (prev.some(p => p.id === id)) return prev
         return [...prev, { 
@@ -93,17 +94,17 @@ export function usePlayers() {
           characterType: 0 
         }]
       })
+      return // Primeira vez, já criou
     }
 
-    // CORREÇÃO: Sempre usar valores recebidos diretamente (baseado em three-arena)
-    // Garantir que sempre atualizamos com os valores mais recentes do servidor
-    const newX = typeof position?.x === 'number' ? position.x : (dyn.position?.x || 0)
-    const newY = position?.y === 0 ? 1.0 : (typeof position?.y === 'number' ? position.y : (dyn.position?.y || 1.0))
-    const newZ = typeof position?.z === 'number' ? position.z : (dyn.position?.z || 0)
-    const newRotY = typeof rotation?.y === 'number' ? rotation.y : (dyn.rotY || 0)
+    // CORREÇÃO CRÍTICA: Sempre usar valores recebidos do servidor diretamente
+    // Não usar valores antigos como fallback - servidor é a fonte da verdade
+    const newX = position.x
+    const newY = position.y === 0 ? 1.0 : position.y
+    const newZ = position.z
+    const newRotY = rotation?.y ?? dyn.rotY
     
-    // SEMPRE criar novo Vector3 (não reutilizar referência)
-    // Isso garante que o Map sempre tem valores atualizados
+    // SEMPRE criar novo Vector3 (garante atualização)
     dyn.position = new THREE.Vector3(newX, newY, newZ)
     dyn.rotY = newRotY
     dyn.lastUpdate = Date.now()

@@ -31,35 +31,28 @@ const CONFIG = {
   POSITION_THRESHOLD: 0.005 // Threshold reduzido para detectar mudanças menores
 }
 
+const STATE_SYNC_INTERVAL = 150 // ~6-7 snapshots por segundo
+
 // Porta do servidor
 const PORT = process.env.PORT || 3001
 
-// Rota de health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', players: Object.keys(players).length })
 })
 
 // Socket.IO - Gerenciamento de conexões
 io.on('connection', (socket) => {
-  console.log(`🔌 Cliente conectado: ${socket.id}`)
-  // Socket.IO 4.x: usar io.sockets.sockets.size para contar conexões
-  const totalConnections = io.sockets.sockets.size
-  console.log(`📊 Total de conexões: ${totalConnections}`)
 
   // Evento: Player entra na sala
   socket.on('join', (data) => {
-    console.log(`📥 Recebido 'join' de ${socket.id}:`, data)
     const { nickname, characterType } = data
     
-    // Validar dados
     if (!nickname || nickname.trim().length === 0) {
-      console.log(`❌ Nickname inválido de ${socket.id}`)
       socket.emit('error', { message: 'Nickname inválido' })
       return
     }
 
     if (characterType === undefined || characterType < 0 || characterType > 2) {
-      console.log(`❌ CharacterType inválido de ${socket.id}:`, characterType)
       socket.emit('error', { message: 'Tipo de personagem inválido' })
       return
     }
@@ -93,32 +86,17 @@ io.on('connection', (socket) => {
       lastUpdate: Date.now() // Timestamp para heartbeat
     }
     
-    // Inicializar rate limiting
     playerUpdateRate[socket.id] = {
       lastUpdate: Date.now(),
       updateCount: 0
     }
 
-    console.log(`✅ Player ${nickname} (${socket.id}) entrou na sala`)
-    console.log(`📊 Total de players agora: ${Object.keys(players).length}`)
-    console.log(`👥 Players atuais:`, Object.keys(players).map(id => players[id].nickname))
-
-    // CORREÇÃO CRÍTICA: Enviar estado atual para TODOS os clientes (não apenas o novo)
-    // Isso garante que todos os clientes tenham a lista completa e sincronizada
-    // Baseado em three-arena: sempre sincronizar todos os clientes
-    io.emit('currentPlayers', players)
-
-    // Informar que um novo player entrou (para animações/notificações)
-    // Usar io.emit para garantir que todos recebam
-    io.emit('newPlayer', players[socket.id])
+    socket.emit('currentPlayers', players)
+    socket.broadcast.emit('newPlayer', players[socket.id])
   })
 
-  // Evento: Player se move
-  // FASE 1: Recebe payload enxuto { x, y, z, ry } e reconstrói estrutura completa
   socket.on('playerMove', (data) => {
-    // Validação rigorosa de dados recebidos
     if (!data || typeof data !== 'object') {
-      console.warn(`⚠️ [Backend] Dados inválidos de ${socket.id}:`, data)
       return
     }
 
@@ -166,7 +144,6 @@ io.on('connection', (socket) => {
       const angle = Math.atan2(validatedZ, validatedX)
       validatedX = Math.cos(angle) * CONFIG.MAX_POSITION_DISTANCE
       validatedZ = Math.sin(angle) * CONFIG.MAX_POSITION_DISTANCE
-      console.warn(`⚠️ [Backend] Player ${socket.id} fora dos limites, reposicionando`)
     }
 
     // MELHORIA 3: Validação de velocidade (prevenir teleporte/cheating)
@@ -190,7 +167,6 @@ io.on('connection', (socket) => {
             validatedX = oldPos.x
             validatedY = oldPos.y
             validatedZ = oldPos.z
-            console.warn(`⚠️ [Backend] Velocidade suspeita para ${socket.id}: ${velocity.toFixed(2)} u/s (distância: ${distance.toFixed(2)})`)
           }
         }
       }
@@ -215,34 +191,24 @@ io.on('connection', (socket) => {
       players[socket.id].rotation = validatedRotation
       players[socket.id].lastUpdate = now
 
-      // CORREÇÃO CRÍTICA: Usar io.emit em vez de socket.broadcast
-      // Isso garante que TODOS os clientes recebam, incluindo o próprio player
-      // (necessário para sincronização completa - baseado em three-arena)
-      io.emit('playerMoved', {
+      // CORREÇÃO CRÍTICA: Usar io.emit para TODOS os clientes
+      // IMPORTANTE: Enviar para TODOS, não apenas broadcast
+      // Isso garante sincronização completa entre todos os clientes
+      const updateData = {
         id: socket.id,
         position: validatedPosition,
         rotation: validatedRotation
-      })
+      }
+      
+      io.emit('playerMoved', updateData)
     }
   })
 
-  // Evento: Player desconecta
   socket.on('disconnect', () => {
     if (players[socket.id]) {
-      const playerNickname = players[socket.id].nickname
-      console.log(`👋 [Backend] Player ${playerNickname} (${socket.id}) desconectou`)
-      
-      // Remover player
       delete players[socket.id]
       delete playerUpdateRate[socket.id]
-
-      // Informar aos outros clientes sobre a desconexão
-      // CORREÇÃO: Usar io.emit para garantir que todos recebam
       io.emit('playerDisconnected', socket.id)
-      
-      console.log(`📊 [Backend] Total de players agora: ${Object.keys(players).length}`)
-    } else {
-      console.log(`ℹ️ [Backend] Socket ${socket.id} desconectou, mas não estava na lista de players`)
     }
   })
 })
@@ -250,6 +216,7 @@ io.on('connection', (socket) => {
 // MELHORIA 5: Sistema de heartbeat global (cleanup de players inativos)
 // Inicializar APÓS o servidor estar pronto
 let heartbeatIntervalId = null
+let stateSyncIntervalId = null
 
 const startHeartbeat = () => {
   if (heartbeatIntervalId) return // Já está rodando
@@ -274,12 +241,8 @@ const startHeartbeat = () => {
       inactivePlayers.forEach(playerId => {
         const player = players[playerId]
         if (player) {
-          console.log(`⏰ [Backend] Removendo player inativo: ${player.nickname} (${playerId})`)
           delete players[playerId]
           delete playerUpdateRate[playerId]
-          
-          // Notificar outros clientes usando io (Socket.IO 4.x)
-          // io.emit() envia para todos os clientes conectados
           io.emit('playerDisconnected', playerId)
         }
       })
@@ -287,11 +250,27 @@ const startHeartbeat = () => {
   }, 5000) // Verificar a cada 5 segundos
 }
 
+const startStateSync = () => {
+  if (stateSyncIntervalId) return
+
+  stateSyncIntervalId = setInterval(() => {
+    if (Object.keys(players).length === 0) return
+
+    const snapshot = Object.values(players).map(player => ({
+      id: player.id,
+      nickname: player.nickname,
+      characterType: player.characterType,
+      position: player.position,
+      rotation: player.rotation,
+      lastUpdate: player.lastUpdate
+    }))
+
+    io.emit('stateSnapshot', snapshot)
+  }, STATE_SYNC_INTERVAL)
+}
+
 server.listen(PORT, () => {
-  console.log(`🚀 Servidor Socket.IO rodando na porta ${PORT}`)
-  console.log(`📡 Aguardando conexões...`)
-  
-  // Iniciar heartbeat após servidor estar pronto
   startHeartbeat()
+  startStateSync()
 })
 

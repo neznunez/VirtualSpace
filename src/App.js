@@ -261,6 +261,11 @@ export default function App() {
   const { socket, isConnected } = useSocket()
   // FASE 2: Nova estrutura - playersList (estático) e getDynamic (dinâmico)
   const { playersList, getDynamic, addPlayer, updatePlayer, removePlayer, clearPlayers } = usePlayers()
+  const playersStaticRef = useRef(playersList)
+
+  useEffect(() => {
+    playersStaticRef.current = playersList
+  }, [playersList])
   
   // Estado para animações e notificações de entrada
   const [joinAnimations, setJoinAnimations] = useState([]) // [{ id, position, timestamp }]
@@ -353,16 +358,53 @@ export default function App() {
       // Se for o próprio player, ignorar (já foi processado em currentPlayers)
     })
 
-    // Evento: Player se moveu
-    // CORREÇÃO: Processar apenas players remotos (não o próprio player local)
-    // O player local já está sendo atualizado pelo PlayerSync
+    // Evento: Player se moveu (atualizações de baixa latência)
     socket.on('playerMoved', ({ id, position, rotation }) => {
-      // Apenas atualizar players remotos
-      if (id !== socket.id) {
-        updatePlayer(id, position, rotation)
-      }
-      // Se for o próprio player, ignorar (já está sendo controlado localmente)
+      if (!id || !position || typeof position.x !== 'number') return
+      updatePlayer(id, position, rotation)
     })
+
+    // Evento: Snapshot completo do estado (servidor autoritativo)
+    const handleStateSnapshot = (snapshot) => {
+      if (!Array.isArray(snapshot)) return
+      const seenIds = new Set()
+
+      snapshot.forEach(player => {
+        if (!player || !player.id || !player.position) return
+        seenIds.add(player.id)
+
+        if (player.id === socket.id) {
+          const spawnY = player.position.y === 0 ? 1.0 : player.position.y
+          setSpawnPosition(prev => {
+            if (
+              prev[0] === player.position.x &&
+              prev[1] === spawnY &&
+              prev[2] === player.position.z
+            ) {
+              return prev
+            }
+            return [player.position.x, spawnY, player.position.z]
+          })
+          return
+        }
+
+        const hasPlayer = playersStaticRef.current.some(p => p.id === player.id)
+        if (!hasPlayer) {
+          addPlayer(player)
+        }
+
+        updatePlayer(player.id, player.position, player.rotation)
+      })
+
+      playersStaticRef.current.forEach(existing => {
+        if (existing.id === socket.id) return
+        if (!seenIds.has(existing.id)) {
+          removePlayer(existing.id)
+        }
+      })
+    }
+
+    socket.on('stateSnapshot', handleStateSnapshot)
 
     // Evento: Player saiu
     socket.on('playerDisconnected', (playerId) => {
@@ -386,6 +428,7 @@ export default function App() {
       socket.off('playerMoved')
       socket.off('playerDisconnected')
       socket.off('disconnect')
+      socket.off('stateSnapshot', handleStateSnapshot)
       socket.off('error')
     }
   }, [socket, socket?.connected, addPlayer, updatePlayer, removePlayer, clearPlayers])
@@ -531,15 +574,18 @@ export default function App() {
             </Controller>
             
             {/* FASE 2: Renderizar players remotos - passar apenas dados estáticos + getDynamic */}
-            {playersList.map(player => (
-              <RemotePlayer 
-                key={player.id} 
-                id={player.id}
-                nickname={player.nickname}
-                characterType={player.characterType}
-                getDynamic={getDynamic}
-              />
-            ))}
+            {/* CORREÇÃO: Filtrar próprio player (já renderizado como Controller local) */}
+            {playersList
+              .filter(player => player.id !== socket?.id)
+              .map(player => (
+                <RemotePlayer 
+                  key={player.id} 
+                  id={player.id}
+                  nickname={player.nickname}
+                  characterType={player.characterType}
+                  getDynamic={getDynamic}
+                />
+              ))}
             
             {/* Animações de entrada */}
             {joinAnimations.map(anim => (
