@@ -3,7 +3,8 @@ import { useThree, useFrame } from '@react-three/fiber'
 import { useRapier } from '@react-three/rapier'
 
 // Componente interno para capturar posição do controller
-export function PlayerSync({ socket, isPaused, spawnPosition }) {
+// CORREÇÃO: Receber controllerRef para garantir referência única
+export function PlayerSync({ socket, isPaused, spawnPosition, controllerRef }) {
   const { scene } = useThree()
   const { world } = useRapier()
   const lastSentRef = useRef({ position: null, rotation: null })
@@ -99,11 +100,24 @@ export function PlayerSync({ socket, isPaused, spawnPosition }) {
       findController()
     }
 
-    // Se não encontrou após 5 segundos, usar fallback
-    const timeSinceSearchStart = now - searchStartTimeRef.current
+    // CORREÇÃO: Priorizar ref direto do Controller (garantir referência única)
     let position, rotation
 
-    if (controllerObjectRef.current) {
+    if (controllerRef?.current) {
+      // CORREÇÃO: Usar ref direto - mesma referência que o Controller renderiza
+      position = {
+        x: controllerRef.current.position.x || 0,
+        y: controllerRef.current.position.y || 0,
+        z: controllerRef.current.position.z || 0
+      }
+
+      rotation = {
+        x: controllerRef.current.rotation.x || 0,
+        y: controllerRef.current.rotation.y || 0,
+        z: controllerRef.current.rotation.z || 0
+      }
+    } else if (controllerObjectRef.current) {
+      // Fallback: buscar via traverse se ref não estiver disponível
       // Verificar se o objeto ainda existe na cena
       if (!controllerObjectRef.current.parent && !scene.getObjectById(controllerObjectRef.current.id)) {
         controllerObjectRef.current = null
@@ -121,13 +135,17 @@ export function PlayerSync({ socket, isPaused, spawnPosition }) {
         y: controllerObjectRef.current.rotation.y || 0,
         z: controllerObjectRef.current.rotation.z || 0
       }
-    } else if (timeSinceSearchStart > 5000 && fallbackPositionRef.current) {
-      // Fallback: usar spawnPosition se não encontrou controller após 5 segundos
-      position = { ...fallbackPositionRef.current }
-      rotation = { x: 0, y: 0, z: 0 }
     } else {
-      // Ainda procurando, não enviar nada
-      return
+      // Se não encontrou após 5 segundos, usar fallback
+      const timeSinceSearchStart = now - searchStartTimeRef.current
+      if (timeSinceSearchStart > 5000 && fallbackPositionRef.current) {
+        // Fallback: usar spawnPosition se não encontrou controller após 5 segundos
+        position = { ...fallbackPositionRef.current }
+        rotation = { x: 0, y: 0, z: 0 }
+      } else {
+        // Ainda procurando, não enviar nada
+        return
+      }
     }
 
     // FASE 1: Frequência de atualização reduzida para 60-80ms (~12-16fps de rede)

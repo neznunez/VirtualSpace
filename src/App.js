@@ -254,6 +254,9 @@ export default function App() {
   const [playerData, setPlayerData] = useState(null) // { nickname, characterType }
   const [spawnPosition, setSpawnPosition] = useState([0, 0, 0]) // Posição inicial do player local
   
+  // CORREÇÃO: Ref para o Controller (garantir referência única)
+  const controllerRef = useRef()
+  
   // Socket.IO e gerenciamento de players
   const { socket, isConnected } = useSocket()
   // FASE 2: Nova estrutura - playersList (estático) e getDynamic (dinâmico)
@@ -498,9 +501,10 @@ export default function App() {
         />
         <Physics timeStep={1/60} gravity={[0, -9.81, 0]} paused={isPaused}>
           <PhysicsPauser isPaused={isPaused} />
-          <PlayerSync socket={socket} isPaused={isPaused} spawnPosition={spawnPosition} />
+          <PlayerSync socket={socket} isPaused={isPaused} spawnPosition={spawnPosition} controllerRef={controllerRef} />
           <KeyboardControls map={keyboardMap} enabled={!isPaused}>
             <Controller 
+              ref={controllerRef}
               maxVelLimit={5}
               userData={{ isController: true }}
               position={spawnPosition}
