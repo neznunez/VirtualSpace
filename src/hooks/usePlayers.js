@@ -25,24 +25,25 @@ export function usePlayers() {
     })
   }, [])
 
-  // Atualizar posição/rotação de um player (otimizado)
+  // Atualizar posição/rotação - SEMPRE atualizar state para trigger re-render
   const updatePlayer = useCallback((id, position, rotation) => {
-    // Atualizar no ref primeiro (rápido, sem re-render)
+    // Atualizar no ref
     if (positionsRef.current[id]) {
       positionsRef.current[id].position = position
       positionsRef.current[id].rotation = rotation
     }
     
-    // Atualizar state apenas se player existe (mantém sincronizado)
+    // IMPORTANTE: Sempre atualizar state para trigger re-render do RemotePlayer
     setPlayers(prev => {
       if (!prev[id]) return prev
-      // Retornar mesmo objeto se apenas posição mudou (evita re-render do componente)
+      
+      // Criar novos objetos para garantir que React detecte a mudança
       return {
         ...prev,
         [id]: {
           ...prev[id],
-          position,
-          rotation
+          position: { ...position }, // Novo objeto
+          rotation: { ...rotation }  // Novo objeto
         }
       }
     })
@@ -53,6 +54,7 @@ export function usePlayers() {
     setPlayers(prev => {
       const newPlayers = { ...prev }
       delete newPlayers[id]
+      delete positionsRef.current[id]
       return newPlayers
     })
   }, [])

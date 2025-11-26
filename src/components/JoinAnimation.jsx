@@ -1,118 +1,122 @@
-import { useRef, useEffect, useState, useMemo } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 
 /**
  * Animação de entrada quando um player entra na sala
- * Efeito de partículas surgindo do chão (como um gênio da lâmpada)
+ * Círculo brilhante no chão que pulsa, avatar aparece com luz, depois desaparece
  */
-export default function JoinAnimation({ position, duration = 2 }) {
+export default function JoinAnimation({ position, duration = 2.5 }) {
   const groupRef = useRef()
-  const particlesRef = useRef([])
+  const circleRef = useRef()
+  const lightRef = useRef()
   const [isActive, setIsActive] = useState(true)
   const timeRef = useRef(0)
-
-  // Criar partículas uma vez (reduzido para melhor performance)
-  const particles = useMemo(() => {
-    const particleCount = 20 // Reduzido de 30 para 20
-    const particles = []
-
-    for (let i = 0; i < particleCount; i++) {
-      const particle = {
-        position: new THREE.Vector3(
-          (Math.random() - 0.5) * 2,
-          -1, // Começar abaixo do chão
-          (Math.random() - 0.5) * 2
-        ),
-        velocity: new THREE.Vector3(
-          (Math.random() - 0.5) * 0.5,
-          Math.random() * 2 + 1, // Velocidade para cima
-          (Math.random() - 0.5) * 0.5
-        ),
-        size: Math.random() * 0.25 + 0.1, // Tamanho ligeiramente menor
-        opacity: 1,
-        color: new THREE.Color().setHSL(Math.random() * 0.1 + 0.5, 0.8, 0.6) // Tons de azul/roxo
-      }
-      particles.push(particle)
-    }
-
-    return particles
-  }, [])
+  const circleOpacityRef = useRef(1)
+  const lightIntensityRef = useRef(0)
 
   useEffect(() => {
-    // Inicializar partículas
-    particlesRef.current = particles.map(p => ({
-      position: p.position.clone(),
-      velocity: p.velocity.clone(),
-      size: p.size,
-      opacity: p.opacity,
-      color: p.color.clone()
-    }))
-
-    // Resetar tempo
-    timeRef.current = 0
-
     // Desativar após a duração
     const timer = setTimeout(() => {
       setIsActive(false)
     }, duration * 1000)
 
     return () => clearTimeout(timer)
-  }, [duration, particles])
+  }, [duration])
 
   useFrame((state, delta) => {
-    if (!isActive || !groupRef.current || particlesRef.current.length === 0) return
+    if (!isActive || !groupRef.current) return
 
     timeRef.current += delta
     const progress = timeRef.current / duration
 
-    // Atualizar partículas (otimizado)
-    const velocityScale = delta
-    const gravity = delta * 2
-    
-    for (let i = 0; i < particlesRef.current.length; i++) {
-      const particle = particlesRef.current[i]
-      
-      // Atualizar posição (evitar clone desnecessário)
-      particle.position.x += particle.velocity.x * velocityScale
-      particle.position.y += particle.velocity.y * velocityScale
-      particle.position.z += particle.velocity.z * velocityScale
-
-      // Reduzir velocidade (gravidade/atrito)
-      particle.velocity.multiplyScalar(0.95)
-      particle.velocity.y -= gravity
-
-      // Reduzir opacidade ao longo do tempo
-      particle.opacity = Math.max(0, 1 - progress)
+    // Fase 1: Círculo aparece e pulsa (0-40% do tempo)
+    if (progress < 0.4) {
+      const phaseProgress = progress / 0.4
+      // Pulsação do círculo
+      const pulse = Math.sin(timeRef.current * 4) * 0.3 + 0.7 // Entre 0.4 e 1.0
+      if (circleRef.current) {
+        circleRef.current.material.emissiveIntensity = pulse * 2
+        circleRef.current.material.opacity = Math.min(1, phaseProgress * 2)
+        // Escala pulsante
+        const scale = 0.8 + Math.sin(timeRef.current * 6) * 0.2
+        circleRef.current.scale.set(scale, 1, scale)
+      }
+    }
+    // Fase 2: Avatar aparece com luz (40-70% do tempo)
+    else if (progress < 0.7) {
+      const phaseProgress = (progress - 0.4) / 0.3
+      // Luz aumenta
+      lightIntensityRef.current = Math.min(3, phaseProgress * 3)
+      if (lightRef.current) {
+        lightRef.current.intensity = lightIntensityRef.current
+      }
+      // Círculo continua pulsando mas mais intenso
+      if (circleRef.current) {
+        const pulse = Math.sin(timeRef.current * 5) * 0.4 + 0.6
+        circleRef.current.material.emissiveIntensity = pulse * 2.5
+      }
+    }
+    // Fase 3: Círculo desaparece suavemente (70-100% do tempo)
+    else {
+      const phaseProgress = (progress - 0.7) / 0.3
+      // Círculo desaparece
+      circleOpacityRef.current = Math.max(0, 1 - phaseProgress)
+      if (circleRef.current) {
+        circleRef.current.material.opacity = circleOpacityRef.current
+        circleRef.current.material.emissiveIntensity = circleOpacityRef.current * 1.5
+      }
+      // Luz também diminui
+      lightIntensityRef.current = Math.max(0, 3 * (1 - phaseProgress))
+      if (lightRef.current) {
+        lightRef.current.intensity = lightIntensityRef.current
+      }
     }
   })
 
-  if (!isActive || particlesRef.current.length === 0) return null
+  if (!isActive) return null
 
   return (
-    <group ref={groupRef} position={[position.x, position.y, position.z]}>
-      {/* Partículas - usando geometria compartilhada para melhor performance */}
-      {particlesRef.current.map((particle, index) => (
-        <mesh 
-          key={index} 
-          position={[particle.position.x, particle.position.y, particle.position.z]}
-        >
-          <sphereGeometry args={[particle.size, 6, 6]} />
-          <meshStandardMaterial
-            color={particle.color}
-            transparent
-            opacity={particle.opacity}
-            emissive={particle.color}
-            emissiveIntensity={0.5}
-          />
-        </mesh>
-      ))}
-
-      {/* Efeito de luz central */}
-      <pointLight
+    <group ref={groupRef} position={[position.x, position.y + 0.01, position.z]}>
+      {/* Círculo brilhante no chão */}
+      <mesh 
+        ref={circleRef}
+        rotation={[-Math.PI / 2, 0, 0]}
         position={[0, 0, 0]}
-        intensity={2}
-        distance={5}
+      >
+        <ringGeometry args={[0.5, 2, 32]} />
+        <meshStandardMaterial
+          color="#6b9fff"
+          emissive="#6b9fff"
+          emissiveIntensity={2}
+          transparent
+          opacity={1}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      
+      {/* Círculo interno mais brilhante */}
+      <mesh 
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.01, 0]}
+      >
+        <circleGeometry args={[1.2, 32]} />
+        <meshStandardMaterial
+          color="#4a9eff"
+          emissive="#4a9eff"
+          emissiveIntensity={1.5}
+          transparent
+          opacity={0.6}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+
+      {/* Luz pontual que ilumina o avatar */}
+      <pointLight
+        ref={lightRef}
+        position={[0, 1.5, 0]}
+        intensity={0}
+        distance={8}
         decay={2}
         color="#6b9fff"
       />

@@ -49,13 +49,32 @@ io.on('connection', (socket) => {
       return
     }
 
+    // Gerar posição aleatória no mapa (área segura)
+    // Mapa tem 100x100, então vamos spawnar em uma área de 80x80 centralizada
+    const spawnRadius = 40 // Raio de spawn (metade de 80)
+    const angle = Math.random() * Math.PI * 2 // Ângulo aleatório
+    const distance = Math.random() * spawnRadius // Distância aleatória do centro
+    
+    const spawnPosition = {
+      x: Math.cos(angle) * distance,
+      y: 0, // No chão
+      z: Math.sin(angle) * distance
+    }
+    
+    // Rotação aleatória inicial
+    const spawnRotation = {
+      x: 0,
+      y: Math.random() * Math.PI * 2, // Rotação aleatória em Y (horizontal)
+      z: 0
+    }
+
     // Criar player
     players[socket.id] = {
       id: socket.id,
       nickname: nickname.trim().slice(0, 12), // Máximo 12 caracteres
       characterType: characterType,
-      position: { x: 0, y: 0, z: 0 },
-      rotation: { x: 0, y: 0, z: 0 }
+      position: spawnPosition,
+      rotation: spawnRotation
     }
 
     console.log(`✅ Player ${nickname} (${socket.id}) entrou na sala`)

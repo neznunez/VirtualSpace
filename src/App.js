@@ -243,6 +243,7 @@ export default function App() {
   const [isPaused, setIsPaused] = useState(false)
   const [hasJoined, setHasJoined] = useState(false)
   const [playerData, setPlayerData] = useState(null) // { nickname, characterType }
+  const [spawnPosition, setSpawnPosition] = useState([0, 0, 0]) // Posição inicial do player local
   
   // Socket.IO e gerenciamento de players
   const { socket, isConnected } = useSocket()
@@ -295,6 +296,24 @@ export default function App() {
           addPlayer(player)
         } else {
           console.log(`  ⏭️  Pulando a si mesmo`)
+          // Se for o próprio player, usar a posição do servidor para spawn
+          if (player.position) {
+            // Definir posição de spawn do player local
+            setSpawnPosition([player.position.x, player.position.y, player.position.z])
+            
+            // Atualizar animação do próprio player com posição correta
+            setJoinAnimations(prev => {
+              const existing = prev.find(a => a.playerId === 'self')
+              if (existing) {
+                return prev.map(a => 
+                  a.playerId === 'self' 
+                    ? { ...a, position: player.position }
+                    : a
+                )
+              }
+              return prev
+            })
+          }
         }
       })
     })
@@ -366,7 +385,9 @@ export default function App() {
         console.log('📤 Enviando join imediatamente...')
         socket.emit('join', { nickname, characterType })
         
-        // Adicionar animação de entrada para o próprio player (posição inicial)
+        // Adicionar animação de entrada para o próprio player
+        // A posição será definida quando receber currentPlayers do servidor
+        // Por enquanto, usar posição inicial (será atualizada)
         const initialPosition = { x: 0, y: 0, z: 0 }
         setJoinAnimations(prev => [...prev, {
           id: `anim-self-${Date.now()}`,
@@ -396,11 +417,11 @@ export default function App() {
     }
   }
   
-  // Remover animações antigas após duração
+  // Remover animações antigas após duração (2.5 segundos)
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now()
-      setJoinAnimations(prev => prev.filter(anim => now - anim.timestamp < 2000))
+      setJoinAnimations(prev => prev.filter(anim => now - anim.timestamp < 2500))
     }, 1000)
     
     return () => clearInterval(interval)
@@ -442,6 +463,7 @@ export default function App() {
             <Controller 
               maxVelLimit={5}
               userData={{ isController: true }}
+              position={spawnPosition}
             >
               <FloatingCharacter>
                 {/* Nickname acima da cabeça do avatar */}
@@ -484,7 +506,7 @@ export default function App() {
               <JoinAnimation
                 key={anim.id}
                 position={anim.position}
-                duration={2}
+                duration={2.5}
               />
             ))}
           </KeyboardControls>
