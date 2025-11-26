@@ -57,7 +57,7 @@ io.on('connection', (socket) => {
     
     const spawnPosition = {
       x: Math.cos(angle) * distance,
-      y: 0, // No chão
+      y: 1.0, // Altura padrão do ecctrl Controller (alinhado com altura do player local)
       z: Math.sin(angle) * distance
     }
     

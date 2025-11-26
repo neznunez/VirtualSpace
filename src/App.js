@@ -298,8 +298,11 @@ export default function App() {
           console.log(`  ⏭️  Pulando a si mesmo`)
           // Se for o próprio player, usar a posição do servidor para spawn
           if (player.position) {
+            // Ajustar Y se for 0 (altura padrão do ecctrl é 1.0)
+            const spawnY = player.position.y === 0 ? 1.0 : player.position.y
             // Definir posição de spawn do player local
-            setSpawnPosition([player.position.x, player.position.y, player.position.z])
+            setSpawnPosition([player.position.x, spawnY, player.position.z])
+            console.log('🎯 Spawn position definida:', [player.position.x, spawnY, player.position.z])
             
             // Atualizar animação do próprio player com posição correta
             setJoinAnimations(prev => {

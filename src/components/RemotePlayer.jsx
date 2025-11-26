@@ -20,9 +20,11 @@ const RemotePlayer = memo(function RemotePlayer({ player }) {
   const fadeTimeRef = useRef(0)
   const [opacity, setOpacity] = useState(0) // Começar invisível para fade in
   
-  // Garantir que position existe, senão usar (0, 0, 0)
-  const initialPos = player.position || { x: 0, y: 0, z: 0 }
-  const targetPosition = useRef(new THREE.Vector3(initialPos.x, initialPos.y, initialPos.z))
+  // Garantir que position existe, senão usar (0, 1.0, 0) - Y padrão do ecctrl
+  const initialPos = player.position || { x: 0, y: 1.0, z: 0 }
+  // Se Y for 0, ajustar para 1.0 (altura padrão do ecctrl)
+  const adjustedY = initialPos.y === 0 ? 1.0 : initialPos.y
+  const targetPosition = useRef(new THREE.Vector3(initialPos.x, adjustedY, initialPos.z))
   const targetRotation = useRef(player.rotation?.y || 0)
   
   // Fade in quando o player é criado
@@ -47,11 +49,23 @@ const RemotePlayer = memo(function RemotePlayer({ player }) {
   // Atualizar posição alvo quando receber novos dados do player
   // Usar valores específicos para evitar re-execuções desnecessárias
   useEffect(() => {
-    const pos = player.position || { x: 0, y: 0, z: 0 }
-    targetPosition.current.set(pos.x, pos.y, pos.z)
-
-    const rotY = player.rotation?.y ?? 0
-    targetRotation.current = rotY
+    const pos = player.position || { x: 0, y: 1.0, z: 0 }
+    // Se Y for 0, ajustar para 1.0 (altura padrão do ecctrl Controller)
+    const adjustedY = pos.y === 0 ? 1.0 : pos.y
+    const newTarget = new THREE.Vector3(pos.x, adjustedY, pos.z)
+    
+    // Se for a primeira vez ou mudança grande (spawn inicial ou lag), teleportar
+    if (groupRef.current) {
+      const distance = groupRef.current.position.distanceTo(newTarget)
+      if (distance > 5) {
+        // Teleportar se muito longe (spawn inicial ou lag severo)
+        groupRef.current.position.copy(newTarget)
+        console.log(`🚀 Teleportando player remoto ${player.nickname}:`, { x: pos.x, y: adjustedY, z: pos.z })
+      }
+    }
+    
+    targetPosition.current.set(pos.x, adjustedY, pos.z)
+    targetRotation.current = player.rotation?.y ?? 0
   }, [
     player.position?.x, 
     player.position?.y, 
@@ -62,9 +76,9 @@ const RemotePlayer = memo(function RemotePlayer({ player }) {
   // Interpolação suave de posição e rotação + animação de flutuação
   useFrame((state, delta) => {
     if (groupRef.current) {
-      // Lerp adaptativo baseado em delta time (mais responsivo)
-      // Usar delta * 15 para interpolação frame-rate independent
-      const lerpFactor = Math.min(delta * 15, 0.3) // Máximo 30% por frame
+      // Lerp mais rápido e responsivo para movimento mais fluido
+      // Usar delta * 25 para interpolação frame-rate independent mais rápida
+      const lerpFactor = Math.min(delta * 25, 0.5) // Máximo 50% por frame (mais responsivo)
       groupRef.current.position.lerp(targetPosition.current, lerpFactor)
       
       // Lerp para rotação

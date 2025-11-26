@@ -55,9 +55,9 @@ export function PlayerSync({ socket, isPaused }) {
   useFrame((state, delta) => {
     if (!socket || isPaused || !world) return
 
-    // Aumentar frequência para 30fps (~33ms) para melhor sincronização
+    // Aumentar frequência para 60fps (~16ms) para melhor sincronização
     const now = Date.now()
-    if (now - lastTimeRef.current < 33) return
+    if (now - lastTimeRef.current < 16) return // 60fps para movimento mais fluido
     lastTimeRef.current = now
 
     try {
@@ -95,8 +95,8 @@ export function PlayerSync({ socket, isPaused }) {
         z: controllerObjectRef.current.rotation.z || 0
       }
 
-      // Reduzir threshold para enviar mais atualizações (melhor sincronização)
-      const threshold = 0.005 // Reduzido de 0.01 para 0.005
+      // Threshold reduzido para detectar movimentos menores (melhor sincronização)
+      const threshold = 0.001 // Reduzido para detectar mudanças muito pequenas
       const lastSent = lastSentRef.current
       
       const hasChanged = 
@@ -108,7 +108,7 @@ export function PlayerSync({ socket, isPaused }) {
 
       if (hasChanged) {
         socket.emit('playerMove', { position, rotation })
-        lastSentRef.current = { position, rotation }
+        lastSentRef.current = { position: { ...position }, rotation: { ...rotation } }
       }
     } catch (error) {
       console.error('Erro no PlayerSync:', error)
