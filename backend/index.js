@@ -34,31 +34,6 @@ const CONFIG = {
 // Porta do servidor
 const PORT = process.env.PORT || 3001
 
-// MELHORIA 5: Sistema de heartbeat global (cleanup de players inativos)
-setInterval(() => {
-  const now = Date.now()
-  const inactivePlayers = []
-  
-  Object.keys(players).forEach(playerId => {
-    const player = players[playerId]
-    const timeSinceUpdate = now - (player.lastUpdate || 0)
-    
-    if (timeSinceUpdate > CONFIG.HEARTBEAT_TIMEOUT) {
-      inactivePlayers.push(playerId)
-    }
-  })
-  
-  // Remover players inativos
-  inactivePlayers.forEach(playerId => {
-    console.log(`⏰ [Backend] Removendo player inativo: ${players[playerId]?.nickname} (${playerId})`)
-    delete players[playerId]
-    delete playerUpdateRate[playerId]
-    
-    // Notificar outros clientes
-    io.emit('playerDisconnected', playerId)
-  })
-}, 5000) // Verificar a cada 5 segundos
-
 // Rota de health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', players: Object.keys(players).length })
@@ -67,7 +42,9 @@ app.get('/health', (req, res) => {
 // Socket.IO - Gerenciamento de conexões
 io.on('connection', (socket) => {
   console.log(`🔌 Cliente conectado: ${socket.id}`)
-  console.log(`📊 Total de conexões: ${io.sockets.sockets.size}`)
+  // Socket.IO 4.x: usar io.sockets.sockets.size para contar conexões
+  const totalConnections = io.sockets.sockets.size
+  console.log(`📊 Total de conexões: ${totalConnections}`)
 
   // Evento: Player entra na sala
   socket.on('join', (data) => {
@@ -287,8 +264,51 @@ io.on('connection', (socket) => {
   })
 })
 
+// MELHORIA 5: Sistema de heartbeat global (cleanup de players inativos)
+// Inicializar APÓS o servidor estar pronto
+let heartbeatIntervalId = null
+
+const startHeartbeat = () => {
+  if (heartbeatIntervalId) return // Já está rodando
+  
+  heartbeatIntervalId = setInterval(() => {
+    const now = Date.now()
+    const inactivePlayers = []
+    
+    Object.keys(players).forEach(playerId => {
+      const player = players[playerId]
+      if (!player) return
+      
+      const timeSinceUpdate = now - (player.lastUpdate || 0)
+      
+      if (timeSinceUpdate > CONFIG.HEARTBEAT_TIMEOUT) {
+        inactivePlayers.push(playerId)
+      }
+    })
+    
+    // Remover players inativos
+    if (inactivePlayers.length > 0) {
+      inactivePlayers.forEach(playerId => {
+        const player = players[playerId]
+        if (player) {
+          console.log(`⏰ [Backend] Removendo player inativo: ${player.nickname} (${playerId})`)
+          delete players[playerId]
+          delete playerUpdateRate[playerId]
+          
+          // Notificar outros clientes usando io (Socket.IO 4.x)
+          // io.emit() envia para todos os clientes conectados
+          io.emit('playerDisconnected', playerId)
+        }
+      })
+    }
+  }, 5000) // Verificar a cada 5 segundos
+}
+
 server.listen(PORT, () => {
   console.log(`🚀 Servidor Socket.IO rodando na porta ${PORT}`)
   console.log(`📡 Aguardando conexões...`)
+  
+  // Iniciar heartbeat após servidor estar pronto
+  startHeartbeat()
 })
 
