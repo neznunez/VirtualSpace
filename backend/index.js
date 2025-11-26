@@ -95,6 +95,7 @@ io.on('connection', (socket) => {
   })
 
   // Evento: Player se move
+  // FASE 1: Recebe payload enxuto { x, y, z, ry } e reconstrói estrutura completa
   socket.on('playerMove', (data) => {
     // Validação rigorosa de dados recebidos
     if (!data || typeof data !== 'object') {
@@ -102,31 +103,26 @@ io.on('connection', (socket) => {
       return
     }
 
-    const { position, rotation } = data
-
-    // Validar estrutura de position
-    if (!position || typeof position !== 'object') {
-      console.warn(`⚠️ [Backend] Position inválido de ${socket.id}:`, position)
-      return
-    }
-
-    // Validar estrutura de rotation
-    if (!rotation || typeof rotation !== 'object') {
-      console.warn(`⚠️ [Backend] Rotation inválido de ${socket.id}:`, rotation)
-      return
-    }
+    // FASE 1: Receber payload enxuto { x, y, z, ry }
+    const { x, y, z, ry } = data
 
     // Validar tipos de valores
+    const validatedX = typeof x === 'number' ? x : 0
+    const validatedY = typeof y === 'number' ? (y === 0 ? 1.0 : y) : 1.0
+    const validatedZ = typeof z === 'number' ? z : 0
+    const validatedRy = typeof ry === 'number' ? ry : 0
+
+    // Reconstruir estrutura completa para armazenamento interno
     const validatedPosition = {
-      x: typeof position.x === 'number' ? position.x : 0,
-      y: typeof position.y === 'number' ? position.y : 1.0,
-      z: typeof position.z === 'number' ? position.z : 0
+      x: validatedX,
+      y: validatedY,
+      z: validatedZ
     }
 
     const validatedRotation = {
-      x: typeof rotation.x === 'number' ? rotation.x : 0,
-      y: typeof rotation.y === 'number' ? rotation.y : 0,
-      z: typeof rotation.z === 'number' ? rotation.z : 0
+      x: 0, // Não usado, mas mantém estrutura
+      y: validatedRy,
+      z: 0  // Não usado, mas mantém estrutura
     }
 
     // Atualizar posição do player
@@ -135,6 +131,7 @@ io.on('connection', (socket) => {
       players[socket.id].rotation = validatedRotation
 
       // Informar aos outros clientes sobre o movimento (sempre enviar dados completos)
+      // Frontend ainda espera estrutura completa no playerMoved
       socket.broadcast.emit('playerMoved', {
         id: socket.id,
         position: validatedPosition,

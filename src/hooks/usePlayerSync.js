@@ -93,8 +93,9 @@ export function PlayerSync({ socket, isPaused, spawnPosition }) {
 
     const now = Date.now()
     
-    // Buscar controller continuamente se não encontrado (a cada 60 frames ~1 segundo)
-    if (!controllerObjectRef.current && now % 1000 < 16) {
+    // Buscar controller menos frequentemente (a cada 2 segundos) para melhor performance
+    const searchInterval = 2000
+    if (!controllerObjectRef.current && now % searchInterval < 16) {
       findController()
     }
 
@@ -129,12 +130,14 @@ export function PlayerSync({ socket, isPaused, spawnPosition }) {
       return
     }
 
-    // Frequência de atualização: 60fps (~16ms)
-    if (now - lastTimeRef.current < 16) return
+    // FASE 1: Frequência de atualização reduzida para 60-80ms (~12-16fps de rede)
+    // Isso reduz significativamente o tráfego de rede mantendo movimento suave
+    const INTERVAL = 80 // ~12.5 updates/s (otimizado para reduzir payload)
+    if (now - lastTimeRef.current < INTERVAL) return
     lastTimeRef.current = now
 
     try {
-      // Threshold muito baixo para garantir envio frequente
+      // Threshold para detectar mudanças significativas
       const threshold = 0.001
       const lastSent = lastSentRef.current
       
@@ -149,7 +152,14 @@ export function PlayerSync({ socket, isPaused, spawnPosition }) {
       const needsHeartbeat = now - lastHeartbeatRef.current > 2000
 
       if ((hasChanged || needsHeartbeat) && socket.connected) {
-        socket.emit('playerMove', { position, rotation })
+        // FASE 1: Payload enxuto - apenas x, y, z, ry (reduz ~40% do tamanho)
+        // Backend irá reconstruir a estrutura completa
+        socket.emit('playerMove', {
+          x: position.x,
+          y: position.y,
+          z: position.z,
+          ry: rotation.y
+        })
         lastSentRef.current = { position: { ...position }, rotation: { ...rotation } }
         if (needsHeartbeat) {
           lastHeartbeatRef.current = now

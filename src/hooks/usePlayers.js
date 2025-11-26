@@ -1,120 +1,149 @@
 import { useState, useCallback, useRef } from 'react'
+import * as THREE from 'three'
 
+/**
+ * FASE 2: Hook otimizado para gerenciar players
+ * 
+ * Separação de responsabilidades:
+ * - State (React): Apenas dados estáticos { id, nickname, characterType }
+ * - Map (dinâmico): Posições e rotações atualizadas { position: Vector3, rotY: number, lastUpdate: number }
+ * 
+ * Isso elimina re-renders desnecessários do React quando apenas a posição muda.
+ */
 export function usePlayers() {
-  const [players, setPlayers] = useState({})
-  // Ref para armazenar posições atualizadas (evita re-renders)
-  const positionsRef = useRef({})
+  // FASE 2: State apenas para dados estáticos (que precisam trigger re-render)
+  const [playersList, setPlayersList] = useState([]) // Array de { id, nickname, characterType }
+  
+  // FASE 2: Map para dados dinâmicos (posições atualizadas sem trigger re-render)
+  const dynamicRef = useRef(new Map()) // Map<id, { position: Vector3, rotY: number, lastUpdate: number }>
 
-  // Adicionar ou atualizar um player
+  // FASE 2: Adicionar player - cria entry no Map e adiciona no state
   const addPlayer = useCallback((playerData) => {
-    // Ajustar Y se for 0 (altura padrão do ecctrl é 1.0)
-    const adjustedPosition = playerData.position || { x: 0, y: 1.0, z: 0 }
-    if (adjustedPosition.y === 0) {
-      adjustedPosition.y = 1.0
-    }
+    const { id, nickname, characterType, position, rotation } = playerData
     
-    setPlayers(prev => {
-      const newPlayers = {
-        ...prev,
-        [playerData.id]: {
-          ...playerData,
-          position: adjustedPosition,
-          rotation: playerData.rotation || { x: 0, y: 0, z: 0 }
-        }
-      }
-      // Armazenar posição no ref também
-      positionsRef.current[playerData.id] = {
-        position: adjustedPosition,
-        rotation: playerData.rotation || { x: 0, y: 0, z: 0 }
-      }
-      return newPlayers
-    })
-  }, [])
-
-  // Atualizar posição/rotação - SEMPRE atualizar state para trigger re-render
-  const updatePlayer = useCallback((id, position, rotation) => {
-    // Validação rigorosa de dados recebidos
+    // Validação
     if (!id || typeof id !== 'string') {
-      console.warn('⚠️ [usePlayers] ID inválido:', id)
+      console.warn('⚠️ [usePlayers] ID inválido ao adicionar:', id)
       return
     }
 
-    if (!position || typeof position !== 'object') {
-      console.warn('⚠️ [usePlayers] Position inválido:', position)
-      return
-    }
+    // Ajustar Y se for 0 (altura padrão do ecctrl é 1.0)
+    const adjustedY = position?.y === 0 ? 1.0 : (position?.y || 1.0)
+    const pos = position || { x: 0, y: 1.0, z: 0 }
+    const rot = rotation || { x: 0, y: 0, z: 0 }
 
-    if (!rotation || typeof rotation !== 'object') {
-      console.warn('⚠️ [usePlayers] Rotation inválido:', rotation)
-      return
-    }
-
-    // Validar estrutura de position
-    const adjustedPosition = {
-      x: typeof position.x === 'number' ? position.x : 0,
-      y: typeof position.y === 'number' ? (position.y === 0 ? 1.0 : position.y) : 1.0,
-      z: typeof position.z === 'number' ? position.z : 0
-    }
-
-    // Validar estrutura de rotation
-    const validatedRotation = {
-      x: typeof rotation.x === 'number' ? rotation.x : 0,
-      y: typeof rotation.y === 'number' ? rotation.y : 0,
-      z: typeof rotation.z === 'number' ? rotation.z : 0
-    }
+    // FASE 2: Criar entry no Map (dados dinâmicos)
+    const positionVector = new THREE.Vector3(
+      typeof pos.x === 'number' ? pos.x : 0,
+      adjustedY,
+      typeof pos.z === 'number' ? pos.z : 0
+    )
     
-    // Atualizar no ref
-    if (positionsRef.current[id]) {
-      positionsRef.current[id].position = adjustedPosition
-      positionsRef.current[id].rotation = validatedRotation
-      positionsRef.current[id].lastUpdate = Date.now()
-    }
-    
-    // IMPORTANTE: SEMPRE atualizar state (SEM verificação de hasChanged)
-    // Isso garante que o React sempre detecte mudanças, mesmo pequenas
-    setPlayers(prev => {
-      if (!prev[id]) {
-        console.warn('⚠️ [usePlayers] Tentando atualizar player inexistente:', id)
-        return prev
+    dynamicRef.current.set(id, {
+      position: positionVector,
+      rotY: typeof rot.y === 'number' ? rot.y : 0,
+      lastUpdate: Date.now()
+    })
+
+    // FASE 2: Adicionar no state (dados estáticos) - apenas uma vez
+    setPlayersList(prev => {
+      // Verificar se já existe
+      if (prev.some(p => p.id === id)) {
+        console.warn(`⚠️ [usePlayers] Player ${id} já existe, atualizando dados estáticos`)
+        return prev.map(p => 
+          p.id === id 
+            ? { id, nickname: nickname?.trim().slice(0, 12) || 'Unknown', characterType: characterType || 0 }
+            : p
+        )
       }
       
-      // SEMPRE criar novos objetos para garantir que React detecte a mudança
-      return {
-        ...prev,
-        [id]: {
-          ...prev[id],
-          position: { ...adjustedPosition }, // Novo objeto - SEMPRE
-          rotation: { ...validatedRotation },  // Novo objeto - SEMPRE
-          lastUpdate: Date.now() // Timestamp para rastreamento
-        }
-      }
+      // Adicionar novo player
+      return [...prev, {
+        id,
+        nickname: nickname?.trim().slice(0, 12) || 'Unknown',
+        characterType: characterType || 0
+      }]
     })
+
+    console.log(`✅ [usePlayers] Player ${id} adicionado. Total: ${dynamicRef.current.size}`)
   }, [])
 
-  // Remover um player
+  // FASE 2: Atualizar posição/rotação - NÃO usa setState, apenas atualiza Map
+  const updatePlayer = useCallback((id, position, rotation) => {
+    // Validação
+    if (!id || typeof id !== 'string') {
+      console.warn('⚠️ [usePlayers] ID inválido ao atualizar:', id)
+      return
+    }
+
+    const dyn = dynamicRef.current.get(id)
+    if (!dyn) {
+      console.warn(`⚠️ [usePlayers] Tentando atualizar player inexistente: ${id}`)
+      return
+    }
+
+    // Validar e ajustar position
+    const adjustedY = position?.y === 0 ? 1.0 : (position?.y || dyn.position.y)
+    
+    // FASE 2: Atualizar diretamente no Map (sem setState)
+    dyn.position.set(
+      typeof position?.x === 'number' ? position.x : dyn.position.x,
+      adjustedY,
+      typeof position?.z === 'number' ? position.z : dyn.position.z
+    )
+    dyn.rotY = typeof rotation?.y === 'number' ? rotation.y : dyn.rotY
+    dyn.lastUpdate = Date.now()
+    
+    // NÃO chamar setState - isso elimina re-renders desnecessários!
+  }, [])
+
+  // FASE 2: Remover player - remove do Map e do state
   const removePlayer = useCallback((id) => {
-    console.log(`🗑️ [usePlayers] Removendo player: ${id}`)
-    setPlayers(prev => {
-      if (!prev[id]) {
-        console.warn(`⚠️ [usePlayers] Tentando remover player inexistente: ${id}`)
-        return prev
-      }
-      const newPlayers = { ...prev }
-      delete newPlayers[id]
-      delete positionsRef.current[id]
-      console.log(`✅ [usePlayers] Player ${id} removido. Players restantes: ${Object.keys(newPlayers).length}`)
-      return newPlayers
+    if (!id || typeof id !== 'string') {
+      console.warn('⚠️ [usePlayers] ID inválido ao remover:', id)
+      return
+    }
+
+    const removed = dynamicRef.current.delete(id)
+    if (!removed) {
+      console.warn(`⚠️ [usePlayers] Tentando remover player inexistente: ${id}`)
+      return
+    }
+
+    // Remover do state também
+    setPlayersList(prev => {
+      const filtered = prev.filter(p => p.id !== id)
+      console.log(`✅ [usePlayers] Player ${id} removido. Restantes: ${filtered.length}`)
+      return filtered
     })
   }, [])
 
-  // Limpar todos os players
+  // FASE 2: Limpar todos os players
   const clearPlayers = useCallback(() => {
-    setPlayers({})
+    dynamicRef.current.clear()
+    setPlayersList([])
+    console.log('✅ [usePlayers] Todos os players removidos')
+  }, [])
+
+  // FASE 2: Função para pegar dados dinâmicos (usado pelo RemotePlayer)
+  const getDynamic = useCallback((id) => {
+    const dyn = dynamicRef.current.get(id)
+    if (!dyn) return null
+    
+    // Retornar clone para evitar mutação direta
+    return {
+      position: dyn.position.clone(),
+      rotY: dyn.rotY,
+      lastUpdate: dyn.lastUpdate
+    }
   }, [])
 
   return {
-    players,
-    positionsRef, // Expor ref para acesso direto
+    // FASE 2: Expor lista de players (dados estáticos) para renderização
+    playersList,
+    // FASE 2: Função para pegar dados dinâmicos
+    getDynamic,
+    // Funções de gerenciamento
     addPlayer,
     updatePlayer,
     removePlayer,

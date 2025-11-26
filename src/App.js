@@ -1,7 +1,7 @@
 import { Canvas, useThree, useFrame } from '@react-three/fiber'
 import { Physics, RigidBody, useRapier } from '@react-three/rapier'
 import { Gltf, useEnvironment, Fisheye, KeyboardControls, Text } from '@react-three/drei'
-import { useEffect, useMemo, useState, useRef } from 'react'
+import React, { useEffect, useMemo, useState, useRef, memo } from 'react'
 import * as THREE from 'three'
 import Controller from 'ecctrl'
 import CharacterSelection from './components/CharacterSelection'
@@ -9,6 +9,7 @@ import RemotePlayer from './components/RemotePlayer'
 import JoinAnimation from './components/JoinAnimation'
 import JoinNotification from './components/JoinNotification'
 import ConnectionStatus from './components/ConnectionStatus'
+import VideoScreen from './components/VideoScreen'
 import { useSocket } from './hooks/useSocket'
 import { usePlayers } from './hooks/usePlayers'
 import { PlayerSync } from './hooks/usePlayerSync'
@@ -25,7 +26,8 @@ function SceneSetup() {
   return null
 }
 
-function NightSky() {
+// Memoizar NightSky para evitar recriação
+const NightSky = memo(function NightSky() {
   const stars = useMemo(() => {
     const starsGeometry = new THREE.BufferGeometry()
     const starsMaterial = new THREE.PointsMaterial({
@@ -47,7 +49,7 @@ function NightSky() {
   }, [])
   
   return <primitive object={stars} />
-}
+})
 
 function PhysicsPauser({ isPaused }) {
   const { world } = useRapier()
@@ -65,7 +67,8 @@ function PhysicsPauser({ isPaused }) {
   return null
 }
 
-function FloatingCharacter({ children }) {
+// Memoizar FloatingCharacter para evitar re-renders desnecessários
+const FloatingCharacter = React.memo(function FloatingCharacter({ children }) {
   const groupRef = useRef()
   const timeRef = useRef(0)
   
@@ -83,9 +86,10 @@ function FloatingCharacter({ children }) {
       {children}
     </group>
   )
-}
+})
 
-function NPC({ position = [0, 0, 0] }) {
+// Memoizar NPC para evitar re-renders desnecessários
+const NPC = memo(function NPC({ position = [0, 0, 0] }) {
   const npcRef = useRef()
   const floatGroupRef = useRef()
   const stateRef = useRef('idle') // 'idle' ou 'walking'
@@ -197,7 +201,12 @@ function NPC({ position = [0, 0, 0] }) {
       </group>
     </group>
   )
-}
+}, (prevProps, nextProps) => {
+  // Comparação customizada para evitar re-renders desnecessários
+  return prevProps.position[0] === nextProps.position[0] &&
+         prevProps.position[1] === nextProps.position[1] &&
+         prevProps.position[2] === nextProps.position[2]
+})
 
 function PauseMenu({ isPaused, onResume }) {
   if (!isPaused) return null
@@ -247,7 +256,8 @@ export default function App() {
   
   // Socket.IO e gerenciamento de players
   const { socket, isConnected } = useSocket()
-  const { players, addPlayer, updatePlayer, removePlayer, clearPlayers } = usePlayers()
+  // FASE 2: Nova estrutura - playersList (estático) e getDynamic (dinâmico)
+  const { playersList, getDynamic, addPlayer, updatePlayer, removePlayer, clearPlayers } = usePlayers()
   
   // Estado para animações e notificações de entrada
   const [joinAnimations, setJoinAnimations] = useState([]) // [{ id, position, timestamp }]
@@ -460,7 +470,15 @@ export default function App() {
             e.target.requestPointerLock()
           }
         }}
-        gl={{ clearColor: '#0a0a1a' }}
+        gl={{ 
+          clearColor: '#0a0a1a',
+          powerPreference: 'high-performance',
+          antialias: true,
+          stencil: false,
+          depth: true
+        }}
+        dpr={[1, 1.5]} // Limitar DPR para melhor performance
+        performance={{ min: 0.5 }} // Reduzir qualidade se FPS < 30
       >
       <Fisheye zoom={0.4}>
         <SceneSetup />
@@ -469,7 +487,16 @@ export default function App() {
           <orthographicCamera attach="shadow-camera" args={[-20, 20, 20, -20]} />
         </directionalLight>
         <ambientLight intensity={0.2} />
-        <Physics timeStep={1/60}>
+        {/* Vídeo em loop - único telão otimizado */}
+        <VideoScreen 
+          videoPath="/zaza.mp4"
+          position={[0, 8, 28]} // Norte (Z positivo) - virado para o centro
+          rotation={[0, Math.PI, 0]} // Olha para o Sul (centro)
+          width={24}
+          height={13.5}
+          muted={false} // Com som
+        />
+        <Physics timeStep={1/60} gravity={[0, -9.81, 0]} paused={isPaused}>
           <PhysicsPauser isPaused={isPaused} />
           <PlayerSync socket={socket} isPaused={isPaused} spawnPosition={spawnPosition} />
           <KeyboardControls map={keyboardMap} enabled={!isPaused}>
@@ -477,6 +504,9 @@ export default function App() {
               maxVelLimit={5}
               userData={{ isController: true }}
               position={spawnPosition}
+              mode="normal"
+              autoBalance={false}
+              disableFollowCam={false}
             >
               <FloatingCharacter>
                 {/* Nickname acima da cabeça do avatar */}
@@ -509,9 +539,15 @@ export default function App() {
               </FloatingCharacter>
             </Controller>
             
-            {/* Renderizar players remotos */}
-            {Object.values(players).map(player => (
-              <RemotePlayer key={player.id} player={player} />
+            {/* FASE 2: Renderizar players remotos - passar apenas dados estáticos + getDynamic */}
+            {playersList.map(player => (
+              <RemotePlayer 
+                key={player.id} 
+                id={player.id}
+                nickname={player.nickname}
+                characterType={player.characterType}
+                getDynamic={getDynamic}
+              />
             ))}
             
             {/* Animações de entrada */}
@@ -523,10 +559,10 @@ export default function App() {
               />
             ))}
           </KeyboardControls>
-          {/* Plano simples como chão - ESPESSURA AUMENTADA */}
-          <RigidBody type="fixed" position={[0, 0, 0]} colliders="cuboid">
+          {/* Plano simples como chão - TAMANHO AUMENTADO - Otimizado */}
+          <RigidBody type="fixed" position={[0, 0, 0]} colliders="cuboid" ccd={false}>
             <mesh receiveShadow position={[0, 0, 0]}>
-              <boxGeometry args={[100, 1.0, 100]} />
+              <boxGeometry args={[200, 1.0, 200]} />
               <meshStandardMaterial color="#4a5568" />
             </mesh>
           </RigidBody>
