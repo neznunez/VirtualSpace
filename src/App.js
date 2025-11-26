@@ -306,7 +306,9 @@ export default function App() {
         console.log(`  - Player: ${player.nickname} (${player.id})`)
         if (player.id !== socket.id) { // Não adicionar a si mesmo
           console.log(`  ✅ Adicionando player remoto: ${player.nickname}`)
+          console.log(`  📋 Dados do player:`, { id: player.id, nickname: player.nickname, position: player.position })
           addPlayer(player)
+          console.log(`  ✅ addPlayer chamado para ${player.id}`)
         } else {
           console.log(`  ⏭️  Pulando a si mesmo`)
           // Se for o próprio player, usar a posição do servidor para spawn
@@ -340,7 +342,9 @@ export default function App() {
       console.log('🆔 Meu socket.id:', socket.id, '| Player.id:', player.id)
       if (player.id !== socket.id) {
         console.log(`  ✅ Adicionando novo player: ${player.nickname}`)
+        console.log(`  📋 Dados do player:`, { id: player.id, nickname: player.nickname, position: player.position })
         addPlayer(player)
+        console.log(`  ✅ addPlayer chamado para ${player.id}`)
         
         // Adicionar animação de entrada na posição do player
         const position = player.position || { x: 0, y: 0, z: 0 }
@@ -365,9 +369,8 @@ export default function App() {
     // Evento: Player se moveu
     socket.on('playerMoved', ({ id, position, rotation }) => {
       console.log('📥 [App] Recebido playerMoved:', { id, position, rotation })
-      console.log('📊 [App] PlayersList antes:', playersList.map(p => p.id))
+      // CORREÇÃO: Usar função de callback para pegar o estado atual
       updatePlayer(id, position, rotation)
-      console.log('📊 [App] PlayersList depois:', playersList.map(p => p.id))
       
       // DEBUG: Verificar se player existe no Map
       const dyn = getDynamic(id)

@@ -19,6 +19,7 @@ export function usePlayers() {
 
   // FASE 2: Adicionar player - cria entry no Map e adiciona no state
   const addPlayer = useCallback((playerData) => {
+    console.log(`🔄 [usePlayers] addPlayer chamado:`, playerData)
     const { id, nickname, characterType, position, rotation } = playerData
     
     // Validação
@@ -56,25 +57,31 @@ export function usePlayers() {
 
     // FASE 2: Adicionar no state (dados estáticos) - apenas uma vez
     setPlayersList(prev => {
+      console.log(`📋 [usePlayers] setPlayersList - antes:`, prev.map(p => p.id))
+      
       // Verificar se já existe
       if (prev.some(p => p.id === id)) {
         console.warn(`⚠️ [usePlayers] Player ${id} já existe, atualizando dados estáticos`)
-        return prev.map(p => 
+        const updated = prev.map(p => 
           p.id === id 
             ? { id, nickname: nickname?.trim().slice(0, 12) || 'Unknown', characterType: characterType || 0 }
             : p
         )
+        console.log(`📋 [usePlayers] setPlayersList - depois (atualizado):`, updated.map(p => p.id))
+        return updated
       }
       
       // Adicionar novo player
-      return [...prev, {
+      const newList = [...prev, {
         id,
         nickname: nickname?.trim().slice(0, 12) || 'Unknown',
         characterType: characterType || 0
       }]
+      console.log(`📋 [usePlayers] setPlayersList - depois (adicionado):`, newList.map(p => p.id))
+      return newList
     })
 
-    console.log(`✅ [usePlayers] Player ${id} adicionado. Total: ${dynamicRef.current.size}`)
+    console.log(`✅ [usePlayers] Player ${id} adicionado. Total no Map: ${dynamicRef.current.size}`)
   }, [])
 
   // FASE 2: Atualizar posição/rotação - NÃO usa setState, apenas atualiza Map
