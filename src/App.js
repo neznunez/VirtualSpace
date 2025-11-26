@@ -277,9 +277,9 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
   
-  // Configurar eventos Socket.IO quando socket estiver disponível
+  // Configurar eventos Socket.IO quando socket estiver disponível E conectado
   useEffect(() => {
-    if (!socket) return
+    if (!socket || !socket.connected) return
 
     console.log('📡 Configurando eventos Socket.IO...')
 
@@ -351,6 +351,7 @@ export default function App() {
 
     // Evento: Player se moveu
     socket.on('playerMoved', ({ id, position, rotation }) => {
+      console.log('📥 [App] Recebido playerMoved:', { id, position, rotation })
       updatePlayer(id, position, rotation)
     })
 
@@ -373,7 +374,7 @@ export default function App() {
       socket.off('playerDisconnected')
       socket.off('error')
     }
-  }, [socket, addPlayer, updatePlayer, removePlayer])
+  }, [socket, socket?.connected, addPlayer, updatePlayer, removePlayer])
   
   const handleJoin = (nickname, characterType) => {
     console.log('🎮 handleJoin chamado:', { nickname, characterType })

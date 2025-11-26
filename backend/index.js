@@ -97,6 +97,7 @@ io.on('connection', (socket) => {
   // Evento: Player se move
   socket.on('playerMove', (data) => {
     const { position, rotation } = data
+    console.log(`📥 [Backend] Recebido playerMove de ${socket.id}:`, { position, rotation })
 
     // Atualizar posição do player
     if (players[socket.id]) {
@@ -104,11 +105,14 @@ io.on('connection', (socket) => {
       players[socket.id].rotation = rotation
 
       // Informar aos outros clientes sobre o movimento
+      console.log(`📤 [Backend] Broadcast playerMoved para outros clientes:`, { id: socket.id, position, rotation })
       socket.broadcast.emit('playerMoved', {
         id: socket.id,
         position,
         rotation
       })
+    } else {
+      console.warn(`⚠️ [Backend] Player ${socket.id} não encontrado ao receber playerMove`)
     }
   })
 

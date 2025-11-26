@@ -9,7 +9,6 @@ export function PlayerSync({ socket, isPaused }) {
   const lastSentRef = useRef({ position: null, rotation: null })
   const lastTimeRef = useRef(0)
   const controllerObjectRef = useRef(null)
-  const searchAttemptsRef = useRef(0)
 
   // Buscar controller uma vez quando o componente monta
   useEffect(() => {
@@ -53,7 +52,8 @@ export function PlayerSync({ socket, isPaused }) {
   }, [scene, world])
 
   useFrame((state, delta) => {
-    if (!socket || isPaused || !world) return
+    // Verificar se socket existe E está conectado
+    if (!socket || !socket.connected || isPaused || !world) return
 
     // Aumentar frequência para 60fps (~16ms) para melhor sincronização
     const now = Date.now()
@@ -61,15 +61,12 @@ export function PlayerSync({ socket, isPaused }) {
     lastTimeRef.current = now
 
     try {
-      // Se ainda não encontrou o controller, tentar novamente (limitado)
-      if (!controllerObjectRef.current && searchAttemptsRef.current < 10) {
-        searchAttemptsRef.current++
+      // Buscar controller continuamente se não encontrado
+      if (!controllerObjectRef.current) {
         scene.traverse((obj) => {
           if (controllerObjectRef.current) return
           if (obj.userData?.isController) {
             controllerObjectRef.current = obj
-            searchAttemptsRef.current = 0 // Reset contador
-            console.log('✅ Controller encontrado durante busca contínua')
           }
         })
       }
@@ -79,7 +76,6 @@ export function PlayerSync({ socket, isPaused }) {
       // Verificar se o objeto ainda existe na cena
       if (!controllerObjectRef.current.parent && !scene.getObjectById(controllerObjectRef.current.id)) {
         controllerObjectRef.current = null
-        searchAttemptsRef.current = 0
         return
       }
 
@@ -95,8 +91,8 @@ export function PlayerSync({ socket, isPaused }) {
         z: controllerObjectRef.current.rotation.z || 0
       }
 
-      // Threshold reduzido para detectar movimentos menores (melhor sincronização)
-      const threshold = 0.001 // Reduzido para detectar mudanças muito pequenas
+      // Threshold muito baixo para garantir envio frequente
+      const threshold = 0.001
       const lastSent = lastSentRef.current
       
       const hasChanged = 
@@ -106,15 +102,13 @@ export function PlayerSync({ socket, isPaused }) {
         Math.abs(position.z - lastSent.position.z) > threshold ||
         Math.abs(rotation.y - (lastSent.rotation?.y || 0)) > threshold
 
-      if (hasChanged) {
+      if (hasChanged && socket.connected) {
         socket.emit('playerMove', { position, rotation })
         lastSentRef.current = { position: { ...position }, rotation: { ...rotation } }
       }
     } catch (error) {
       console.error('Erro no PlayerSync:', error)
-      // Resetar cache em caso de erro
       controllerObjectRef.current = null
-      searchAttemptsRef.current = 0
     }
   })
 

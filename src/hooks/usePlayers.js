@@ -45,29 +45,22 @@ export function usePlayers() {
       positionsRef.current[id].rotation = rotation
     }
     
-    // IMPORTANTE: Sempre atualizar state para trigger re-render do RemotePlayer
+    // IMPORTANTE: SEMPRE atualizar state (SEM verificação de hasChanged)
+    // Isso garante que o React sempre detecte mudanças, mesmo pequenas
     setPlayers(prev => {
       if (!prev[id]) {
-        console.warn('⚠️ Tentando atualizar player inexistente:', id)
+        console.warn('⚠️ [usePlayers] Tentando atualizar player inexistente:', id)
         return prev
       }
       
-      // Verificar se realmente mudou (evitar updates desnecessários mas garantir que mude quando necessário)
-      const currentPos = prev[id].position || { x: 0, y: 1.0, z: 0 }
-      const hasChanged = 
-        Math.abs(currentPos.x - adjustedPosition.x) > 0.0001 ||
-        Math.abs(currentPos.y - adjustedPosition.y) > 0.0001 ||
-        Math.abs(currentPos.z - adjustedPosition.z) > 0.0001 ||
-        Math.abs((prev[id].rotation?.y || 0) - (rotation.y || 0)) > 0.0001
-      
-      // Sempre criar novos objetos para garantir que React detecte a mudança
-      // Mesmo que a mudança seja pequena, criar novo objeto garante re-render
+      // SEMPRE criar novos objetos para garantir que React detecte a mudança
+      console.log(`🔄 [usePlayers] Atualizando player ${id}:`, adjustedPosition)
       return {
         ...prev,
         [id]: {
           ...prev[id],
-          position: { ...adjustedPosition }, // Novo objeto
-          rotation: { ...rotation }  // Novo objeto
+          position: { ...adjustedPosition }, // Novo objeto - SEMPRE
+          rotation: { ...rotation }  // Novo objeto - SEMPRE
         }
       }
     })
