@@ -95,18 +95,17 @@ export function usePlayers() {
       })
     }
 
-    // Validar e ajustar position
-    const adjustedY = position?.y === 0 ? 1.0 : (position?.y || dyn.position.y)
+    // CORREÇÃO: Sempre usar valores recebidos diretamente (baseado em three-arena)
+    // Garantir que sempre atualizamos com os valores mais recentes do servidor
+    const newX = typeof position?.x === 'number' ? position.x : (dyn.position?.x || 0)
+    const newY = position?.y === 0 ? 1.0 : (typeof position?.y === 'number' ? position.y : (dyn.position?.y || 1.0))
+    const newZ = typeof position?.z === 'number' ? position.z : (dyn.position?.z || 0)
+    const newRotY = typeof rotation?.y === 'number' ? rotation.y : (dyn.rotY || 0)
     
-    // CORREÇÃO CRÍTICA: Criar novo Vector3 em vez de usar set()
-    // Isso garante que a referência seja atualizada corretamente
-    const newX = typeof position?.x === 'number' ? position.x : dyn.position.x
-    const newY = adjustedY
-    const newZ = typeof position?.z === 'number' ? position.z : dyn.position.z
-    
-    // Substituir o Vector3 completamente (garante atualização)
+    // SEMPRE criar novo Vector3 (não reutilizar referência)
+    // Isso garante que o Map sempre tem valores atualizados
     dyn.position = new THREE.Vector3(newX, newY, newZ)
-    dyn.rotY = typeof rotation?.y === 'number' ? rotation.y : dyn.rotY
+    dyn.rotY = newRotY
     dyn.lastUpdate = Date.now()
   }, [])
 
@@ -128,13 +127,16 @@ export function usePlayers() {
   }, [])
 
   // FASE 2: Função para pegar dados dinâmicos (usado pelo RemotePlayer)
+  // CORREÇÃO: Criar novo Vector3 a partir dos valores, não clonar referência
+  // Isso garante que sempre temos os valores mais recentes (baseado em three-arena)
   const getDynamic = useCallback((id) => {
     const dyn = dynamicRef.current.get(id)
-    if (!dyn) return null
+    if (!dyn || !dyn.position) return null
     
-    // Retornar clone para evitar mutação direta
+    // Criar novo Vector3 a partir dos valores atuais (não clonar referência)
+    // Isso garante que sempre pegamos os valores mais recentes do Map
     return {
-      position: dyn.position.clone(),
+      position: new THREE.Vector3(dyn.position.x, dyn.position.y, dyn.position.z),
       rotY: dyn.rotY,
       lastUpdate: dyn.lastUpdate
     }

@@ -152,15 +152,15 @@ export function PlayerSync({ socket, isPaused, spawnPosition, controllerRef }) {
       }
     }
 
-    // FASE 1: Frequência de atualização reduzida para 60-80ms (~12-16fps de rede)
-    // Isso reduz significativamente o tráfego de rede mantendo movimento suave
-    const INTERVAL = 80 // ~12.5 updates/s (otimizado para reduzir payload)
+    // CORREÇÃO: Frequência otimizada baseada em three-arena
+    // Balance entre responsividade e tráfego de rede
+    const INTERVAL = 50 // ~20 updates/s (mais responsivo que 80ms)
     if (now - lastTimeRef.current < INTERVAL) return
     lastTimeRef.current = now
 
     try {
-      // Threshold para detectar mudanças significativas
-      const threshold = 0.001
+      // Threshold menor para detectar mudanças mais precisas
+      const threshold = 0.0005 // Reduzido de 0.001 para ser mais sensível
       const lastSent = lastSentRef.current
       
       const hasChanged = 
@@ -170,12 +170,11 @@ export function PlayerSync({ socket, isPaused, spawnPosition, controllerRef }) {
         Math.abs(position.z - lastSent.position.z) > threshold ||
         Math.abs(rotation.y - (lastSent.rotation?.y || 0)) > threshold
 
-      // Heartbeat: enviar posição mesmo sem mudança a cada 2 segundos
-      const needsHeartbeat = now - lastHeartbeatRef.current > 2000
+      // Heartbeat: enviar posição mesmo sem mudança a cada 1.5 segundos (mais frequente)
+      const needsHeartbeat = now - lastHeartbeatRef.current > 1500
 
       if ((hasChanged || needsHeartbeat) && socket.connected) {
-        // FASE 1: Payload enxuto - apenas x, y, z, ry (reduz ~40% do tamanho)
-        // Backend irá reconstruir a estrutura completa
+        // Payload enxuto - apenas x, y, z, ry
         socket.emit('playerMove', {
           x: position.x,
           y: position.y,

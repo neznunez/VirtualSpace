@@ -62,32 +62,33 @@ const RemotePlayer = memo(function RemotePlayer({ id, nickname, characterType, g
   }, [id]) // Reset quando id muda
 
   // FASE 2: Movimento 100% no useFrame - pega dados dinâmicos via getDynamic
+  // CORREÇÃO: Abordagem mais direta baseada em three-arena
   useFrame((_, delta) => {
     const g = groupRef.current
     if (!g) return
 
-    // FASE 2: Pegar dados dinâmicos do Map (sem trigger re-render)
+    // Pegar dados dinâmicos do Map
     const dyn = getDynamic(id)
     if (!dyn || !dyn.position) {
       if (!isInitialized.current) return
       return
     }
 
-    // CORREÇÃO 3: Primeira vez que encontra dados válidos, teleportar imediatamente
+    // Primeira vez: inicializar imediatamente
     if (!isInitialized.current) {
-      g.position.copy(dyn.position)
+      g.position.set(dyn.position.x, dyn.position.y, dyn.position.z)
       g.rotation.y = dyn.rotY
-      targetPos.current.copy(dyn.position)
+      targetPos.current.set(dyn.position.x, dyn.position.y, dyn.position.z)
       targetRotY.current = dyn.rotY
       isInitialized.current = true
       return
     }
 
-    // Atualizar target position/rotation
-    targetPos.current.copy(dyn.position)
+    // Atualizar target position/rotation (sempre usar valores diretos)
+    targetPos.current.set(dyn.position.x, dyn.position.y, dyn.position.z)
     targetRotY.current = dyn.rotY
 
-    // Teleporte se muito longe (lag severo ou erro de sincronização)
+    // Teleporte se muito longe (lag severo)
     const TELEPORT_DISTANCE = 10
     const distance = g.position.distanceTo(targetPos.current)
     if (distance > TELEPORT_DISTANCE) {
@@ -96,9 +97,9 @@ const RemotePlayer = memo(function RemotePlayer({ id, nickname, characterType, g
       return
     }
 
-    // FASE 2: Interpolação exponencial (frame-rate independent)
-    // 1 - Math.exp(-25 * delta) = suavização exponencial
-    const t = 1 - Math.exp(-25 * delta)
+    // Interpolação exponencial (frame-rate independent)
+    // Baseado em three-arena: usar lerp mais agressivo para movimento mais responsivo
+    const t = 1 - Math.exp(-30 * delta) // Aumentado de 25 para 30 (mais responsivo)
 
     g.position.lerp(targetPos.current, t)
     g.rotation.y += (targetRotY.current - g.rotation.y) * t

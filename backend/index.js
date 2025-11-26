@@ -21,14 +21,14 @@ const players = {}
 // Rate limiting por player (prevenir spam)
 const playerUpdateRate = {} // { socketId: { lastUpdate: timestamp, updateCount: number } }
 
-// Configurações
+// Configurações (otimizadas baseadas em three-arena e projetos modernos)
 const CONFIG = {
-  MAX_UPDATE_RATE: 20, // Máximo 20 updates por segundo por player
-  MIN_UPDATE_INTERVAL: 50, // Intervalo mínimo entre updates (ms)
-  MAX_POSITION_DISTANCE: 150, // Distância máxima do centro (prevenir players fora do mapa)
-  MAX_VELOCITY: 15, // Velocidade máxima permitida (unidades/segundo)
-  HEARTBEAT_TIMEOUT: 10000, // Timeout para considerar player inativo (10 segundos)
-  POSITION_THRESHOLD: 0.01 // Threshold mínimo para considerar mudança de posição
+  MAX_UPDATE_RATE: 30, // Aumentado para 30 updates/s (mais responsivo)
+  MIN_UPDATE_INTERVAL: 33, // Reduzido para 33ms (~30fps de rede, mais fluido)
+  MAX_POSITION_DISTANCE: 150, // Distância máxima do centro
+  MAX_VELOCITY: 20, // Aumentado para 20 u/s (mais permissivo para movimento rápido)
+  HEARTBEAT_TIMEOUT: 10000, // Timeout para considerar player inativo
+  POSITION_THRESHOLD: 0.005 // Threshold reduzido para detectar mudanças menores
 }
 
 // Porta do servidor
@@ -125,16 +125,16 @@ io.on('connection', (socket) => {
       return
     }
 
-    // MELHORIA 1: Rate limiting - prevenir spam de updates
+    // Rate limiting otimizado (baseado em three-arena)
     const now = Date.now()
     const rateLimit = playerUpdateRate[socket.id]
     
     if (rateLimit) {
       const timeSinceLastUpdate = now - rateLimit.lastUpdate
       
-      // Verificar intervalo mínimo
+      // Verificar intervalo mínimo (mais permissivo)
       if (timeSinceLastUpdate < CONFIG.MIN_UPDATE_INTERVAL) {
-        return // Ignorar update muito frequente
+        return
       }
       
       // Resetar contador se passou 1 segundo
@@ -144,16 +144,14 @@ io.on('connection', (socket) => {
       
       // Verificar limite de updates por segundo
       if (rateLimit.updateCount >= CONFIG.MAX_UPDATE_RATE) {
-        console.warn(`⚠️ [Backend] Rate limit excedido para ${socket.id}`)
         return
       }
       
       rateLimit.updateCount++
+      rateLimit.lastUpdate = now
     } else {
       playerUpdateRate[socket.id] = { lastUpdate: now, updateCount: 1 }
     }
-    
-    playerUpdateRate[socket.id].lastUpdate = now
 
     // FASE 1: Receber payload enxuto { x, y, z, ry }
     const { x, y, z, ry } = data
