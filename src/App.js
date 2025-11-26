@@ -8,6 +8,7 @@ import CharacterSelection from './components/CharacterSelection'
 import RemotePlayer from './components/RemotePlayer'
 import JoinAnimation from './components/JoinAnimation'
 import JoinNotification from './components/JoinNotification'
+import ConnectionStatus from './components/ConnectionStatus'
 import { useSocket } from './hooks/useSocket'
 import { usePlayers } from './hooks/usePlayers'
 import { PlayerSync } from './hooks/usePlayerSync'
@@ -500,6 +501,9 @@ export default function App() {
       </Fisheye>
     </Canvas>
     <PauseMenu isPaused={isPaused} onResume={() => setIsPaused(false)} />
+    
+    {/* Indicador de status do Socket.IO - Pronto para receber usuários */}
+    {hasJoined && <ConnectionStatus isConnected={isConnected} />}
     
     {/* Notificações de entrada */}
     {notifications.map(notif => (
