@@ -296,38 +296,42 @@ export default function App() {
 
 
     // Evento: Receber lista de players ao conectar
+    // CORREÇÃO: Processar TODOS os players, incluindo si mesmo
+    // Isso garante sincronização completa (baseado em three-arena)
     socket.on('currentPlayers', (playersList) => {
+      // Limpar players antigos antes de adicionar novos (evitar duplicatas)
+      clearPlayers()
+      
       Object.values(playersList).forEach(player => {
-        if (player.id !== socket.id) { // Não adicionar a si mesmo
-          addPlayer(player)
-        } else {
-          // Se for o próprio player, usar a posição do servidor para spawn
-          if (player.position) {
-            // Ajustar Y se for 0 (altura padrão do ecctrl é 1.0)
-            const spawnY = player.position.y === 0 ? 1.0 : player.position.y
-            // Definir posição de spawn do player local
-            setSpawnPosition([player.position.x, spawnY, player.position.z])
-            
-            // Atualizar animação do próprio player com posição correta
-            setJoinAnimations(prev => {
-              const existing = prev.find(a => a.playerId === 'self')
-              if (existing) {
-                return prev.map(a => 
-                  a.playerId === 'self' 
-                    ? { ...a, position: player.position }
-                    : a
-                )
-              }
-              return prev
-            })
-          }
+        // Adicionar TODOS os players (incluindo si mesmo para sincronização)
+        addPlayer(player)
+        
+        // Se for o próprio player, usar a posição do servidor para spawn
+        if (player.id === socket.id && player.position) {
+          const spawnY = player.position.y === 0 ? 1.0 : player.position.y
+          setSpawnPosition([player.position.x, spawnY, player.position.z])
+          
+          // Atualizar animação do próprio player
+          setJoinAnimations(prev => {
+            const existing = prev.find(a => a.playerId === 'self')
+            if (existing) {
+              return prev.map(a => 
+                a.playerId === 'self' 
+                  ? { ...a, position: player.position }
+                  : a
+              )
+            }
+            return prev
+          })
         }
       })
     })
 
     // Evento: Novo player entrou
+    // CORREÇÃO: Processar apenas se não for o próprio player (evitar duplicatas)
     socket.on('newPlayer', (player) => {
       if (player.id !== socket.id) {
+        // Adicionar player (addPlayer já verifica se existe)
         addPlayer(player)
         
         // Adicionar animação de entrada na posição do player
@@ -345,14 +349,19 @@ export default function App() {
           nickname: player.nickname,
           timestamp: Date.now()
         }])
-      } else {
-        console.log(`  ⏭️  Pulando a si mesmo`)
       }
+      // Se for o próprio player, ignorar (já foi processado em currentPlayers)
     })
 
     // Evento: Player se moveu
+    // CORREÇÃO: Processar apenas players remotos (não o próprio player local)
+    // O player local já está sendo atualizado pelo PlayerSync
     socket.on('playerMoved', ({ id, position, rotation }) => {
-      updatePlayer(id, position, rotation)
+      // Apenas atualizar players remotos
+      if (id !== socket.id) {
+        updatePlayer(id, position, rotation)
+      }
+      // Se for o próprio player, ignorar (já está sendo controlado localmente)
     })
 
     // Evento: Player saiu

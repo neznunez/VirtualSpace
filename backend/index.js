@@ -103,17 +103,14 @@ io.on('connection', (socket) => {
     console.log(`📊 Total de players agora: ${Object.keys(players).length}`)
     console.log(`👥 Players atuais:`, Object.keys(players).map(id => players[id].nickname))
 
-    // Enviar estado atual de todos os players para o novo cliente
-    console.log(`📤 Enviando 'currentPlayers' para ${socket.id}:`, players)
-    socket.emit('currentPlayers', players)
+    // CORREÇÃO CRÍTICA: Enviar estado atual para TODOS os clientes (não apenas o novo)
+    // Isso garante que todos os clientes tenham a lista completa e sincronizada
+    // Baseado em three-arena: sempre sincronizar todos os clientes
+    io.emit('currentPlayers', players)
 
-    // Informar aos outros clientes que um novo player entrou
-    if (Object.keys(players).length > 1) {
-      console.log(`📢 Broadcast 'newPlayer' para outros clientes:`, players[socket.id])
-      socket.broadcast.emit('newPlayer', players[socket.id])
-    } else {
-      console.log(`ℹ️  Primeiro player, sem broadcast necessário`)
-    }
+    // Informar que um novo player entrou (para animações/notificações)
+    // Usar io.emit para garantir que todos recebam
+    io.emit('newPlayer', players[socket.id])
   })
 
   // Evento: Player se move
@@ -218,8 +215,10 @@ io.on('connection', (socket) => {
       players[socket.id].rotation = validatedRotation
       players[socket.id].lastUpdate = now
 
-      // Sempre enviar atualização para outros clientes
-      socket.broadcast.emit('playerMoved', {
+      // CORREÇÃO CRÍTICA: Usar io.emit em vez de socket.broadcast
+      // Isso garante que TODOS os clientes recebam, incluindo o próprio player
+      // (necessário para sincronização completa - baseado em three-arena)
+      io.emit('playerMoved', {
         id: socket.id,
         position: validatedPosition,
         rotation: validatedRotation
@@ -238,8 +237,8 @@ io.on('connection', (socket) => {
       delete playerUpdateRate[socket.id]
 
       // Informar aos outros clientes sobre a desconexão
-      console.log(`📤 [Backend] Broadcast playerDisconnected para outros clientes: ${socket.id}`)
-      socket.broadcast.emit('playerDisconnected', socket.id)
+      // CORREÇÃO: Usar io.emit para garantir que todos recebam
+      io.emit('playerDisconnected', socket.id)
       
       console.log(`📊 [Backend] Total de players agora: ${Object.keys(players).length}`)
     } else {
